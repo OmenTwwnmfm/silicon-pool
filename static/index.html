@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>硅基 Key 池</title>
+    <link rel="icon" type="image/x-icon" href="/static/favicon.ico">
+    <style>
+        body {
+            font-family: sans-serif;
+            margin: 20px auto;
+            max-width: 800px;
+            text-align: center;
+        }
+
+        textarea {
+            width: 100%;
+            height: 200px;
+            margin-bottom: 10px;
+        }
+
+        button {
+            padding: 10px 20px;
+            margin-right: 10px;
+        }
+
+        #message {
+            margin-top: 10px;
+            color: green;
+        }
+
+        #stats {
+            margin-top: 20px;
+            font-weight: bold;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>硅基流动 Key 池管理</h1>
+    <textarea id="keys" placeholder="每行一个api-key"></textarea><br>
+    <button onclick="importKeys()">导入</button>
+    <button onclick="refreshKeys()">刷新</button>
+    <button onclick="exportKeys()">导出</button>
+    <div id="message"></div>
+    <div id="stats">当前key数量：0 个，余额总量：0</div>
+
+    <!-- New Log Table Section -->
+    <h2>最近调用日志</h2>
+    <table border="1" id="logsTable" style="width:100%; text-align:center;">
+        <thead>
+            <tr>
+                <th>使用的Key</th>
+                <th>模型</th>
+                <th>调用时间</th>
+                <th>输入Token量</th>
+                <th>输出Token量</th>
+                <th>总Token量</th>
+            </tr>
+        </thead>
+        <tbody>
+            <!-- Logs will be dynamically inserted here -->
+        </tbody>
+    </table>
+    <div id="pagination">
+        <!-- Pagination buttons will be dynamically inserted here -->
+    </div>
+    <button onclick="clearLogs()" style="margin-top:10px;">清空日志</button>
+
+    <script>
+        async function fetchStats() {
+            const response = await fetch("/stats");
+            const data = await response.json();
+            document.getElementById("stats").textContent =
+                `当前key数量：${data.key_count} 个，余额总量：${data.total_balance}`;
+        }
+        async function importKeys() {
+            document.getElementById("message").textContent = "正在导入，请稍候...";
+            const keys = document.getElementById("keys").value;
+            const response = await fetch("/import_keys", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ keys })
+            });
+            const data = await response.json();
+            document.getElementById("message").textContent = data.message;
+            fetchStats();
+        }
+        async function refreshKeys() {
+            document.getElementById("message").textContent = "正在刷新，请稍候...";
+            const response = await fetch("/refresh", { method: "POST" });
+            const data = await response.json();
+            document.getElementById("message").textContent = data.message;
+            fetchStats();
+        }
+        function exportKeys() {
+            window.location.href = "/export_keys";
+        }
+        // Logs fetching and pagination
+        async function fetchLogs(page = 1) {
+            const response = await fetch(`/logs?page=${page}`);
+            const data = await response.json();
+            const tbody = document.querySelector("#logsTable tbody");
+            tbody.innerHTML = "";
+            data.logs.forEach(log => {
+                const tr = document.createElement("tr");
+                const dt = new Date(log.call_time * 1000);
+                tr.innerHTML = `
+                    <td>${log.used_key}</td>
+                    <td>${log.model}</td>
+                    <td>${dt.toLocaleString()}</td>
+                    <td>${log.input_tokens}</td>
+                    <td>${log.output_tokens}</td>
+                    <td>${log.total_tokens}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+            // Update pagination buttons
+            const paginationDiv = document.getElementById("pagination");
+            paginationDiv.innerHTML = "";
+            const totalPages = Math.ceil(data.total / data.page_size);
+            for (let i = 1; i <= totalPages; i++) {
+                const btn = document.createElement("button");
+                btn.textContent = i;
+                if (i === data.page) {
+                    btn.disabled = true;
+                }
+                btn.onclick = () => fetchLogs(i);
+                paginationDiv.appendChild(btn);
+            }
+        }
+        async function clearLogs() {
+            if (!confirm("确定要清空所有日志吗？此操作无法撤销。")) return;
+            const response = await fetch("/clear_logs", { method: "POST" });
+            const data = await response.json();
+            alert(data.message);
+            fetchLogs();
+        }
+        // Update stats and logs on page load
+        fetchStats();
+        fetchLogs();
+    </script>
+</body>
+
+</html>
