@@ -185,10 +185,10 @@ async def chat_completions(request: Request):
                 ) as resp:
                     async for chunk in resp.content.iter_any():
                         try:
-                            chunk_str = chunk.decode('utf-8')
+                            chunk_str = chunk.decode("utf-8")
                             if chunk_str == "[DONE]":
                                 continue
-                            if chunk_str.startswith('data: '):
+                            if chunk_str.startswith("data: "):
                                 data = json.loads(chunk_str[6:])
                                 usage = data.get("usage", {})
                                 completion_tokens = usage.get("completion_tokens", 0)
@@ -236,12 +236,31 @@ async def chat_completions(request: Request):
                         total_tokens,
                     )
                     return JSONResponse(content=resp_json, status_code=resp.status)
-        except aiohttp.ClientConnectionError as e:
-            raise HTTPException(status_code=502, detail=f"连接关闭: {str(e)}")
-        except asyncio.TimeoutError as e:
-            raise HTTPException(status_code=504, detail=f"请求超时: {str(e)}")
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"请求转发失败: {str(e)}")
+
+
+@app.post("/v1/embeddings")
+async def embeddings(request: Request):
+    cursor.execute("SELECT key FROM api_keys")
+    keys = [row[0] for row in cursor.fetchall()]
+    if not keys:
+        raise HTTPException(status_code=500, detail="没有可用的api-key")
+    selected = random.choice(keys)
+    forward_headers = dict(request.headers)
+    forward_headers["Authorization"] = f"Bearer {selected}"
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                f"{BASE_URL}/v1/embeddings",
+                headers=forward_headers,
+                data=await request.body(),
+                timeout=30,
+            ) as resp:
+                data = await resp.json()
+                return JSONResponse(content=data, status_code=resp.status)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"请求转发失败: {str(e)}")
 
 
 @app.get("/v1/models")
