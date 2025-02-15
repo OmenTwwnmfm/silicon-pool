@@ -7,75 +7,250 @@
     <title>硅基 Key 池</title>
     <link rel="icon" type="image/x-icon" href="/static/favicon.ico">
     <style>
+        :root {
+            --primary-color: #2563eb;
+            --secondary-color: #3b82f6;
+            --success-color: #10b981;
+            --danger-color: #ef4444;
+            --background-color: #f8fafc;
+        }
+
         body {
-            font-family: sans-serif;
-            margin: 20px auto;
-            max-width: 800px;
-            text-align: center;
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            margin: 2rem auto;
+            padding: 0 1rem;
+            max-width: 1000px;
+            background-color: var(--background-color);
+            color: #1e293b;
+        }
+
+        h1 {
+            color: var(--primary-color);
+            font-size: 2.2rem;
+            margin-bottom: 2rem;
+            font-weight: 600;
+            letter-spacing: -0.5px;
         }
 
         textarea {
             width: 100%;
             height: 200px;
-            margin-bottom: 10px;
+            padding: 1rem;
+            border: 2px solid #cbd5e1;
+            border-radius: 8px;
+            margin: 1rem 0;
+            resize: vertical;
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            transition: border-color 0.3s ease;
+        }
+
+        textarea:focus {
+            outline: none;
+            border-color: var(--primary-color);
+            box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+        }
+
+        textarea::placeholder {
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            color: #64748b;
+            opacity: 1;
+        }
+
+        .button-group {
+            display: flex;
+            gap: 0.8rem;
+            flex-wrap: wrap;
+            justify-content: center;
+            margin: 1.5rem 0;
         }
 
         button {
-            padding: 10px 20px;
-            margin-right: 10px;
+            padding: 0.8rem 1.5rem;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 500;
+            transition: all 0.2s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        button.primary {
+            background-color: var(--primary-color);
+            color: white;
+        }
+
+        button.secondary {
+            background-color: #64748b;
+            color: white;
+        }
+
+        button.danger {
+            background-color: var(--danger-color);
+            color: white;
+        }
+
+        button:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+
+        button:active {
+            transform: translateY(0);
         }
 
         #message {
-            margin-top: 10px;
-            color: green;
+            margin: 1rem 0;
+            padding: 0.8rem;
+            border-radius: 6px;
+            font-weight: 500;
+            display: none;
+        }
+
+        #message.success {
+            background-color: #dcfce7;
+            color: #166534;
+            border: 1px solid #22c55e;
+            display: block;
         }
 
         #stats {
-            margin-top: 20px;
-            font-weight: bold;
+            padding: 1rem;
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
+            margin: 2rem 0;
+            font-size: 1.1rem;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 2rem 0;
+            background-color: white;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        }
+
+        th,
+        td {
+            padding: 1rem;
+            text-align: center;
+            border-bottom: 1px solid #e2e8f0;
+        }
+
+        th {
+            background-color: var(--primary-color);
+            color: white;
+            font-weight: 600;
+        }
+
+        table thead th {
+            padding-top: 0.3rem;
+            padding-bottom: 0.3rem;
+        }
+
+        tr:hover {
+            background-color: #f8fafc;
+        }
+
+        tr:nth-child(even) {
+            background-color: #f1f5f9;
+        }
+
+        .pagination {
+            display: flex;
+            gap: 0.5rem;
+            justify-content: center;
+            margin: 1rem 0;
+        }
+
+        .pagination button {
+            padding: 0.5rem 1rem;
+            border: 1px solid #cbd5e1;
+            background-color: white;
+            color: var(--primary-color);
+        }
+
+        .pagination button:disabled {
+            background-color: var(--primary-color);
+            color: white;
+            cursor: default;
+        }
+
+        @media (max-width: 768px) {
+            body {
+                padding: 1rem;
+            }
+
+            table {
+                font-size: 0.9rem;
+            }
+
+            th,
+            td {
+                padding: 0.8rem;
+            }
         }
     </style>
 </head>
 
 <body>
-    <h1>硅基流动 Key 池管理</h1>
-    <textarea id="keys" placeholder="每行一个api-key"></textarea><br>
-    <button onclick="importKeys()">导入</button>
-    <button onclick="refreshKeys()">刷新</button>
-    <button onclick="exportKeys()">导出</button>
-    <div id="message"></div>
-    <div id="stats">当前key数量：0 个，余额总量：0</div>
+    <h1>🔑 硅基流动 Key 池管理</h1>
 
-    <!-- New Log Table Section -->
-    <h2>最近调用日志</h2>
-    <table border="1" id="logsTable" style="width:100%; text-align:center;">
+    <textarea id="keys" placeholder="请每行输入一个 API Key..."></textarea>
+
+    <div class="button-group">
+        <button class="primary" onclick="importKeys()">📥 导入 Key</button>
+        <button class="secondary" onclick="refreshKeys()">🔄 刷新</button>
+        <button class="secondary" onclick="exportKeys()">📤 导出为 TXT</button>
+    </div>
+
+    <div id="message"></div>
+
+    <div id="stats">
+        📊 当前 Key 数量：<span id="keyCount">0</span> 个
+        | 余额总量：<span id="totalBalance">0</span>
+    </div>
+
+    <h2>📝 最近调用日志</h2>
+    <table id="logsTable">
         <thead>
             <tr>
-                <th>使用的Key</th>
+                <th>使用的 Key</th>
                 <th>模型</th>
                 <th>调用时间</th>
-                <th>输入Token量</th>
-                <th>输出Token量</th>
-                <th>总Token量</th>
+                <th>输入 Token</th>
+                <th>输出 Token</th>
+                <th>总 Token</th>
             </tr>
         </thead>
-        <tbody>
-            <!-- Logs will be dynamically inserted here -->
-        </tbody>
+        <tbody></tbody>
     </table>
-    <div id="pagination">
-        <!-- Pagination buttons will be dynamically inserted here -->
+
+    <div class="pagination" id="pagination"></div>
+
+    <div class="button-group">
+        <button class="danger" onclick="clearLogs()">🗑️ 清空日志</button>
     </div>
-    <button onclick="clearLogs()" style="margin-top:10px;">清空日志</button>
 
     <script>
+        async function showMessage(text, type = 'success') {
+            const messageEl = document.getElementById('message');
+            messageEl.textContent = text;
+            messageEl.className = type;
+            setTimeout(() => messageEl.style.display = 'none', 3000);
+        }
         async function fetchStats() {
             const response = await fetch("/stats");
             const data = await response.json();
-            document.getElementById("stats").textContent =
-                `当前key数量：${data.key_count} 个，余额总量：${data.total_balance}`;
+            document.getElementById("keyCount").textContent = data.key_count;
+            document.getElementById("totalBalance").textContent = data.total_balance;
         }
         async function importKeys() {
+            document.getElementById("message").style.display = 'block';
             document.getElementById("message").textContent = "正在导入，请稍候...";
             const keys = document.getElementById("keys").value;
             const response = await fetch("/import_keys", {
@@ -88,10 +263,12 @@
             fetchStats();
         }
         async function refreshKeys() {
-            document.getElementById("message").textContent = "正在刷新，请稍候...";
+            const messageEl = document.getElementById("message");
+            messageEl.style.display = 'block';
+            messageEl.textContent = "正在刷新，请稍候...";
             const response = await fetch("/refresh", { method: "POST" });
             const data = await response.json();
-            document.getElementById("message").textContent = data.message;
+            messageEl.textContent = data.message;
             fetchStats();
         }
         function exportKeys() {
@@ -99,6 +276,13 @@
         }
         // Logs fetching and pagination
         async function fetchLogs(page = 1) {
+            document.querySelector("#logsTable tbody").innerHTML = `
+                <tr>
+                    <td colspan="6" style="padding: 2rem; color: #64748b;">
+                        ⏳ 正在加载日志...
+                    </td>
+                </tr>
+            `;
             const response = await fetch(`/logs?page=${page}`);
             const data = await response.json();
             const tbody = document.querySelector("#logsTable tbody");
