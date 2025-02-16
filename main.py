@@ -1,12 +1,14 @@
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse, Response
 from fastapi.staticfiles import StaticFiles
+from config import API_KEY
 import sqlite3
 import random
 import time
 import asyncio
 import aiohttp
 import json
+
 
 app = FastAPI()
 
@@ -151,6 +153,10 @@ async def refresh_keys():
 
 @app.post("/v1/chat/completions")
 async def chat_completions(request: Request):
+    if API_KEY is not None:
+        request_api_key = request.headers.get("Authorization")
+        if request_api_key != f"Bearer {API_KEY}":
+            raise HTTPException(status_code=403, detail="无效的API_KEY")
     cursor.execute("SELECT key FROM api_keys")
     keys = [row[0] for row in cursor.fetchall()]
     if not keys:
@@ -173,7 +179,6 @@ async def chat_completions(request: Request):
     is_stream = req_json.get("stream", False)  # Changed default to False
 
     if is_stream:
-
         async def generate_stream():
             completion_tokens = 0
             async with aiohttp.ClientSession() as session:
@@ -242,6 +247,10 @@ async def chat_completions(request: Request):
 
 @app.post("/v1/embeddings")
 async def embeddings(request: Request):
+    if API_KEY is not None:
+        request_api_key = request.headers.get("Authorization")
+        if request_api_key != f"Bearer {API_KEY}":
+            raise HTTPException(status_code=403, detail="无效的API_KEY")
     cursor.execute("SELECT key FROM api_keys")
     keys = [row[0] for row in cursor.fetchall()]
     if not keys:
