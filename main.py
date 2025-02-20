@@ -8,6 +8,11 @@ import time
 import asyncio
 import aiohttp
 import json
+from uvicorn.config import LOGGING_CONFIG
+
+LOGGING_CONFIG["formatters"]["default"]["fmt"] = (
+    "%(asctime)s - %(levelprefix)s %(message)s"
+)
 
 
 app = FastAPI()
@@ -179,6 +184,7 @@ async def chat_completions(request: Request):
     is_stream = req_json.get("stream", False)  # Changed default to False
 
     if is_stream:
+
         async def generate_stream():
             completion_tokens = 0
             async with aiohttp.ClientSession() as session:
@@ -351,4 +357,4 @@ async def clear_logs():
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run(app, host="127.0.0.1", port=7898)
+    uvicorn.run(app, host="0.0.0.0", port=7898)
