@@ -10,3 +10,4 @@ wheels/
 .venv
 
 pool.db
+config.json

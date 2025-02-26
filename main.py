@@ -1,18 +1,37 @@
-from fastapi import FastAPI, Request, HTTPException
+from fastapi import FastAPI, Request, HTTPException, BackgroundTasks
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse, Response
 from fastapi.staticfiles import StaticFiles
-from config import API_KEY
+from config import (
+    CALL_STRATEGY,
+    CUSTOM_API_KEY,
+    update_call_strategy,
+    update_custom_api_key,
+)
 import sqlite3
 import random
 import time
 import asyncio
 import aiohttp
 import json
+import uvicorn
+import logging
 from uvicorn.config import LOGGING_CONFIG
 
 LOGGING_CONFIG["formatters"]["default"]["fmt"] = (
     "%(asctime)s - %(levelprefix)s %(message)s"
 )
+LOGGING_CONFIG["formatters"]["access"]["fmt"] = (
+    "%(asctime)s - %(levelprefix)s %(message)s"
+)
+LOGGING_CONFIG["formatters"]["default"]["use_colors"] = None
+LOGGING_CONFIG["formatters"]["access"]["use_colors"] = None
+LOGGING_CONFIG["loggers"]["root"] = {
+    "handlers": ["default"],
+    "level": "INFO",
+}
+
+logging.config.dictConfig(LOGGING_CONFIG)
+logging.basicConfig(level=logging.INFO)
 
 
 app = FastAPI()
@@ -156,17 +175,46 @@ async def refresh_keys():
     )
 
 
+def select_api_key(keys_with_balance):
+    if CUSTOM_API_KEY and CUSTOM_API_KEY.strip():
+        return CUSTOM_API_KEY
+    # keys_with_balance: list of (key, balance)
+    if not keys_with_balance:
+        return None
+    if CALL_STRATEGY == "high":
+        return max(keys_with_balance, key=lambda x: x[1])[0]
+    elif CALL_STRATEGY == "low":
+        return min(keys_with_balance, key=lambda x: x[1])[0]
+    else:
+        return random.choice(keys_with_balance)[0]
+
+
+async def check_and_remove_key(key: str):
+    valid, balance = await validate_key_async(key)
+    logger = logging.getLogger(__name__)
+    if valid:
+        logger.info(f"Key validation successful: {key[:8]}*** - Balance: {balance}")
+        if float(balance) <= 0:
+            logging.warning(f"Removing key {key[:8]}*** due to zero balance")
+            cursor.execute("DELETE FROM api_keys WHERE key = ?", (key,))
+            conn.commit()
+    else:
+        logger.warning(f"Invalid key detected: {key[:8]}*** - Removing from pool")
+        cursor.execute("DELETE FROM api_keys WHERE key = ?", (key,))
+        conn.commit()
+
+
 @app.post("/v1/chat/completions")
-async def chat_completions(request: Request):
-    if API_KEY is not None:
+async def chat_completions(request: Request, background_tasks: BackgroundTasks):
+    if CUSTOM_API_KEY and CUSTOM_API_KEY.strip():
         request_api_key = request.headers.get("Authorization")
-        if request_api_key != f"Bearer {API_KEY}":
+        if request_api_key != f"Bearer {CUSTOM_API_KEY}":
             raise HTTPException(status_code=403, detail="无效的API_KEY")
-    cursor.execute("SELECT key FROM api_keys")
-    keys = [row[0] for row in cursor.fetchall()]
-    if not keys:
+    cursor.execute("SELECT key, balance FROM api_keys")
+    keys_with_balance = cursor.fetchall()
+    if not keys_with_balance:
         raise HTTPException(status_code=500, detail="没有可用的api-key")
-    selected = random.choice(keys)
+    selected = select_api_key(keys_with_balance)
     # Increase usage count
     cursor.execute(
         "UPDATE api_keys SET usage_count = usage_count + 1 WHERE key = ?", (selected,)
@@ -215,6 +263,7 @@ async def chat_completions(request: Request):
                 completion_tokens,
                 input_tokens + completion_tokens,
             )
+            await check_and_remove_key(selected)
 
         try:
             return StreamingResponse(
@@ -246,22 +295,24 @@ async def chat_completions(request: Request):
                         completion_tokens,
                         total_tokens,
                     )
+                    # 后台检查 key 余额
+                    background_tasks.add_task(check_and_remove_key, selected)
                     return JSONResponse(content=resp_json, status_code=resp.status)
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"请求转发失败: {str(e)}")
 
 
 @app.post("/v1/embeddings")
-async def embeddings(request: Request):
-    if API_KEY is not None:
+async def embeddings(request: Request, background_tasks: BackgroundTasks):
+    if CUSTOM_API_KEY and CUSTOM_API_KEY.strip():
         request_api_key = request.headers.get("Authorization")
-        if request_api_key != f"Bearer {API_KEY}":
+        if request_api_key != f"Bearer {CUSTOM_API_KEY}":
             raise HTTPException(status_code=403, detail="无效的API_KEY")
-    cursor.execute("SELECT key FROM api_keys")
-    keys = [row[0] for row in cursor.fetchall()]
-    if not keys:
+    cursor.execute("SELECT key, balance FROM api_keys")
+    keys_with_balance = cursor.fetchall()
+    if not keys_with_balance:
         raise HTTPException(status_code=500, detail="没有可用的api-key")
-    selected = random.choice(keys)
+    selected = select_api_key(keys_with_balance)
     forward_headers = dict(request.headers)
     forward_headers["Authorization"] = f"Bearer {selected}"
     try:
@@ -273,6 +324,8 @@ async def embeddings(request: Request):
                 timeout=30,
             ) as resp:
                 data = await resp.json()
+                # 后台检查 key 余额
+                background_tasks.add_task(check_and_remove_key, selected)
                 return JSONResponse(content=data, status_code=resp.status)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"请求转发失败: {str(e)}")
@@ -280,11 +333,11 @@ async def embeddings(request: Request):
 
 @app.get("/v1/models")
 async def list_models(request: Request):
-    cursor.execute("SELECT key FROM api_keys")
-    keys = [row[0] for row in cursor.fetchall()]
-    if not keys:
+    cursor.execute("SELECT key, balance FROM api_keys")
+    keys_with_balance = cursor.fetchall()
+    if not keys_with_balance:
         raise HTTPException(status_code=500, detail="没有可用的api-key")
-    selected = random.choice(keys)
+    selected = select_api_key(keys_with_balance)
     forward_headers = dict(request.headers)
     forward_headers["Authorization"] = f"Bearer {selected}"
     try:
@@ -354,7 +407,37 @@ async def clear_logs():
         raise HTTPException(status_code=500, detail=f"清空日志失败: {str(e)}")
 
 
-if __name__ == "__main__":
-    import uvicorn
+@app.get("/config/strategy")
+async def get_strategy():
+    return JSONResponse({"call_strategy": CALL_STRATEGY})
 
+
+@app.post("/config/strategy")
+async def set_strategy(request: Request):
+    data = await request.json()
+    new_strategy = data.get("call_strategy")
+    if new_strategy not in ["random", "high", "low"]:
+        raise HTTPException(status_code=400, detail="无效的调用策略")
+    update_call_strategy(new_strategy)
+    return JSONResponse({"message": "调用策略更新成功", "call_strategy": new_strategy})
+
+
+# 新增接口：获取自定义 api_key 配置
+@app.get("/config/custom_api_key")
+async def get_custom_api_key():
+    return JSONResponse({"custom_api_key": CUSTOM_API_KEY})
+
+
+# 新增接口：更新自定义 api_key配置，{"custom_api_key": "值"}，空字符串表示不使用
+@app.post("/config/custom_api_key")
+async def set_custom_api_key(request: Request):
+    data = await request.json()
+    new_key = data.get("custom_api_key", "")
+    update_custom_api_key(new_key)
+    return JSONResponse(
+        {"message": "自定义 api_key 更新成功", "custom_api_key": new_key}
+    )
+
+
+if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=7898)

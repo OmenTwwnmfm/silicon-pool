@@ -34,6 +34,7 @@
 
         textarea {
             width: 100%;
+            box-sizing: border-box;
             height: 200px;
             padding: 1rem;
             border: 2px solid #cbd5e1;
@@ -115,13 +116,22 @@
             display: block;
         }
 
+        #message.error {
+            background-color: #fee2e2;
+            color: #991b1b;
+            border: 1px solid #ef4444;
+            display: block;
+        }
+
         #stats {
             padding: 1rem;
-            background-color: white;
+            background-color: #dbeafe;
+            border: 2px solid #3b82f6;
             border-radius: 8px;
             box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
             margin: 2rem 0;
             font-size: 1.1rem;
+            text-align: center;
         }
 
         table {
@@ -194,11 +204,41 @@
                 padding: 0.8rem;
             }
         }
+
+        /* 新增部分样式 */
+        .strategy-select {
+            margin: 1rem 0;
+            text-align: center;
+        }
+
+        .strategy-select select {
+            padding: 0.5rem;
+            border-radius: 4px;
+            border: 1px solid #cbd5e1;
+        }
     </style>
 </head>
 
 <body>
     <h1>🔑 硅基流动 Key 池管理</h1>
+
+    <div class="settings-container" style="display: flex; gap: 1rem; justify-content: center; align-items: center;">
+        <div class="strategy-select">
+            <label for="callStrategy">调用策略：</label>
+            <select id="callStrategy" onchange="updateStrategy()">
+                <option value="random">随机</option>
+                <option value="high">优先消耗高额度</option>
+                <option value="low">优先消耗低额度</option>
+            </select>
+        </div>
+        <div class="custom-key" style="text-align:center;">
+            <label for="customApiKey">自定义转发 API Key：</label>
+            <input type="text" id="customApiKey" placeholder="留空表示不使用"
+                style="padding:0.5rem; border:1px solid #cbd5e1; border-radius:4px;">
+            <button class="primary" onclick="updateCustomApiKey()"
+                style="padding:0.5rem 1rem; font-size:0.9rem; height:35px; line-height:1;">保存</button>
+        </div>
+    </div>
 
     <textarea id="keys" placeholder="请每行输入一个 API Key..."></textarea>
 
@@ -212,7 +252,7 @@
 
     <div id="stats">
         📊 当前 Key 数量：<span id="keyCount">0</span> 个
-        | 余额总量：<span id="totalBalance">0</span>
+        | 余额总量：¥ <span id="totalBalance">0</span>
     </div>
 
     <h2>📝 最近调用日志</h2>
@@ -241,14 +281,17 @@
             const messageEl = document.getElementById('message');
             messageEl.textContent = text;
             messageEl.className = type;
+            messageEl.style.display = 'block';
             setTimeout(() => messageEl.style.display = 'none', 3000);
         }
+
         async function fetchStats() {
             const response = await fetch("/stats");
             const data = await response.json();
             document.getElementById("keyCount").textContent = data.key_count;
             document.getElementById("totalBalance").textContent = data.total_balance;
         }
+
         async function importKeys() {
             document.getElementById("message").style.display = 'block';
             document.getElementById("message").textContent = "正在导入，请稍候...";
@@ -262,18 +305,19 @@
             document.getElementById("message").textContent = data.message;
             fetchStats();
         }
+
         async function refreshKeys() {
-            const messageEl = document.getElementById("message");
-            messageEl.style.display = 'block';
-            messageEl.textContent = "正在刷新，请稍候...";
+            showMessage("正在刷新，请稍候...", "success");
             const response = await fetch("/refresh", { method: "POST" });
             const data = await response.json();
-            messageEl.textContent = data.message;
+            showMessage(data.message, "success");
             fetchStats();
         }
+
         function exportKeys() {
             window.location.href = "/export_keys";
         }
+
         // Logs fetching and pagination
         async function fetchLogs(page = 1) {
             document.querySelector("#logsTable tbody").innerHTML = `
@@ -314,6 +358,7 @@
                 paginationDiv.appendChild(btn);
             }
         }
+
         async function clearLogs() {
             if (!confirm("确定要清空所有日志吗？此操作无法撤销。")) return;
             const response = await fetch("/clear_logs", { method: "POST" });
@@ -321,6 +366,46 @@
             alert(data.message);
             fetchLogs();
         }
+
+        async function loadStrategy() {
+            const response = await fetch("/config/strategy");
+            const data = await response.json();
+            document.getElementById("callStrategy").value = data.call_strategy;
+        }
+
+        async function updateStrategy() {
+            const select = document.getElementById("callStrategy");
+            const value = select.value;
+            const response = await fetch("/config/strategy", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ call_strategy: value })
+            });
+            const data = await response.json();
+            showMessage(data.message, "success");
+        }
+
+        async function loadCustomApiKey() {
+            const response = await fetch("/config/custom_api_key");
+            const data = await response.json();
+            document.getElementById("customApiKey").value = data.custom_api_key;
+        }
+
+        async function updateCustomApiKey() {
+            const newKey = document.getElementById("customApiKey").value;
+            const response = await fetch("/config/custom_api_key", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ custom_api_key: newKey })
+            });
+            const data = await response.json();
+            showMessage(data.message, "success");
+        }
+
+        // 初始化加载调用策略与自定义 api_key
+        loadStrategy();
+        loadCustomApiKey();
+
         // Update stats and logs on page load
         fetchStats();
         fetchLogs();
