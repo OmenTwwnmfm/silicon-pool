@@ -1,9 +1,8 @@
 from fastapi import FastAPI, Request, HTTPException, BackgroundTasks
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse, Response
 from fastapi.staticfiles import StaticFiles
+import config
 from config import (
-    CALL_STRATEGY,
-    CUSTOM_API_KEY,
     update_call_strategy,
     update_custom_api_key,
 )
@@ -176,14 +175,12 @@ async def refresh_keys():
 
 
 def select_api_key(keys_with_balance):
-    if CUSTOM_API_KEY and CUSTOM_API_KEY.strip():
-        return CUSTOM_API_KEY
     # keys_with_balance: list of (key, balance)
     if not keys_with_balance:
         return None
-    if CALL_STRATEGY == "high":
+    if config.CALL_STRATEGY == "high":
         return max(keys_with_balance, key=lambda x: x[1])[0]
-    elif CALL_STRATEGY == "low":
+    elif config.CALL_STRATEGY == "low":
         return min(keys_with_balance, key=lambda x: x[1])[0]
     else:
         return random.choice(keys_with_balance)[0]
@@ -195,7 +192,7 @@ async def check_and_remove_key(key: str):
     if valid:
         logger.info(f"Key validation successful: {key[:8]}*** - Balance: {balance}")
         if float(balance) <= 0:
-            logging.warning(f"Removing key {key[:8]}*** due to zero balance")
+            logger.warning(f"Removing key {key[:8]}*** due to zero balance")
             cursor.execute("DELETE FROM api_keys WHERE key = ?", (key,))
             conn.commit()
     else:
@@ -206,9 +203,9 @@ async def check_and_remove_key(key: str):
 
 @app.post("/v1/chat/completions")
 async def chat_completions(request: Request, background_tasks: BackgroundTasks):
-    if CUSTOM_API_KEY and CUSTOM_API_KEY.strip():
+    if config.CUSTOM_API_KEY and config.CUSTOM_API_KEY.strip():
         request_api_key = request.headers.get("Authorization")
-        if request_api_key != f"Bearer {CUSTOM_API_KEY}":
+        if request_api_key != f"Bearer {config.CUSTOM_API_KEY}":
             raise HTTPException(status_code=403, detail="无效的API_KEY")
     cursor.execute("SELECT key, balance FROM api_keys")
     keys_with_balance = cursor.fetchall()
@@ -304,9 +301,9 @@ async def chat_completions(request: Request, background_tasks: BackgroundTasks):
 
 @app.post("/v1/embeddings")
 async def embeddings(request: Request, background_tasks: BackgroundTasks):
-    if CUSTOM_API_KEY and CUSTOM_API_KEY.strip():
+    if config.CUSTOM_API_KEY and config.CUSTOM_API_KEY.strip():
         request_api_key = request.headers.get("Authorization")
-        if request_api_key != f"Bearer {CUSTOM_API_KEY}":
+        if request_api_key != f"Bearer {config.CUSTOM_API_KEY}":
             raise HTTPException(status_code=403, detail="无效的API_KEY")
     cursor.execute("SELECT key, balance FROM api_keys")
     keys_with_balance = cursor.fetchall()
@@ -409,7 +406,7 @@ async def clear_logs():
 
 @app.get("/config/strategy")
 async def get_strategy():
-    return JSONResponse({"call_strategy": CALL_STRATEGY})
+    return JSONResponse({"call_strategy": config.CALL_STRATEGY})
 
 
 @app.post("/config/strategy")
@@ -425,7 +422,7 @@ async def set_strategy(request: Request):
 # 新增接口：获取自定义 api_key 配置
 @app.get("/config/custom_api_key")
 async def get_custom_api_key():
-    return JSONResponse({"custom_api_key": CUSTOM_API_KEY})
+    return JSONResponse({"custom_api_key": config.CUSTOM_API_KEY})
 
 
 # 新增接口：更新自定义 api_key配置，{"custom_api_key": "值"}，空字符串表示不使用
