@@ -151,8 +151,12 @@ async def import_keys(request: Request):
 
 @app.post("/refresh")
 async def refresh_keys():
-    cursor.execute("SELECT key FROM api_keys")
-    all_keys = [row[0] for row in cursor.fetchall()]
+    cursor.execute("SELECT key, balance FROM api_keys")
+    key_balance_map = {row[0]: row[1] for row in cursor.fetchall()}
+    all_keys = list(key_balance_map.keys())
+
+    # Get initial total balance
+    initial_balance = sum(key_balance_map.values())
 
     # Create tasks for parallel validation
     tasks = [validate_key_async(key) for key in all_keys]
@@ -169,8 +173,16 @@ async def refresh_keys():
             removed += 1
 
     conn.commit()
+
+    # Calculate new total balance
+    cursor.execute("SELECT COALESCE(SUM(balance), 0) FROM api_keys")
+    new_balance = cursor.fetchone()[0]
+    balance_decrease = initial_balance - new_balance
+
     return JSONResponse(
-        {"message": f"刷新完成，共移除 {removed} 个余额用尽或无效的key"}
+        {
+            "message": f"刷新完成，共移除 {removed} 个余额用尽或无效的 Key，余额减少了{round(balance_decrease, 2)}"
+        }
     )
 
 
@@ -223,8 +235,6 @@ async def chat_completions(request: Request, background_tasks: BackgroundTasks):
     req_body = await request.body()
     req_json = await request.json()
     model = req_json.get("model", "unknown")
-    # approximate input tokens as word count
-    input_tokens = len(str(req_json).split())
     call_time_stamp = time.time()
     is_stream = req_json.get("stream", False)  # Changed default to False
 
@@ -232,35 +242,48 @@ async def chat_completions(request: Request, background_tasks: BackgroundTasks):
 
         async def generate_stream():
             completion_tokens = 0
-            async with aiohttp.ClientSession() as session:
-                async with session.post(
-                    f"{BASE_URL}/v1/chat/completions",
-                    headers=forward_headers,
-                    data=req_body,
-                    timeout=30,
-                ) as resp:
-                    async for chunk in resp.content.iter_any():
-                        try:
-                            chunk_str = chunk.decode("utf-8")
-                            if chunk_str == "[DONE]":
-                                continue
-                            if chunk_str.startswith("data: "):
-                                data = json.loads(chunk_str[6:])
-                                usage = data.get("usage", {})
-                                completion_tokens = usage.get("completion_tokens", 0)
-                        except Exception:
-                            pass
-                        yield chunk
-            # 流结束后记录完整 token 数量
-            log_completion(
-                selected,
-                model,
-                call_time_stamp,
-                input_tokens,
-                completion_tokens,
-                input_tokens + completion_tokens,
-            )
-            await check_and_remove_key(selected)
+            prompt_tokens = 0
+            total_tokens = 0
+            try:
+                async with aiohttp.ClientSession() as session:
+                    async with session.post(
+                        f"{BASE_URL}/v1/chat/completions",
+                        headers=forward_headers,
+                        data=req_body,
+                        timeout=10,
+                    ) as resp:
+                        async for chunk in resp.content.iter_any():
+                            try:
+                                chunk_str = chunk.decode("utf-8")
+                                if chunk_str == "[DONE]":
+                                    continue
+                                if chunk_str.startswith("data: "):
+                                    data = json.loads(chunk_str[6:])
+                                    usage = data.get("usage", {})
+                                    prompt_tokens = usage.get("prompt_tokens", 0)
+                                    completion_tokens = usage.get(
+                                        "completion_tokens", 0
+                                    )
+                                    total_tokens = usage.get("total_tokens", 0)
+                            except Exception:
+                                pass
+                            yield chunk
+                # 流结束后记录完整 token 数量
+                log_completion(
+                    selected,
+                    model,
+                    call_time_stamp,
+                    prompt_tokens,
+                    completion_tokens,
+                    total_tokens,
+                )
+                await check_and_remove_key(selected)
+            except Exception as e:
+                error_json = json.dumps({"error": f"请求失败: {str(e)}"}).encode(
+                    "utf-8"
+                )
+                yield f"data: {error_json}\n\n".encode("utf-8")
+                yield b"data: [DONE]\n\n"
 
         try:
             return StreamingResponse(
@@ -276,7 +299,7 @@ async def chat_completions(request: Request, background_tasks: BackgroundTasks):
                     f"{BASE_URL}/v1/chat/completions",
                     headers=forward_headers,
                     data=req_body,
-                    timeout=30,
+                    timeout=10,
                 ) as resp:
                     resp_json = await resp.json()
                     usage = resp_json.get("usage", {})
@@ -288,7 +311,7 @@ async def chat_completions(request: Request, background_tasks: BackgroundTasks):
                         selected,
                         model,
                         call_time_stamp,
-                        input_tokens or prompt_tokens,
+                        prompt_tokens,
                         completion_tokens,
                         total_tokens,
                     )
@@ -434,6 +457,109 @@ async def set_custom_api_key(request: Request):
     return JSONResponse(
         {"message": "自定义 api_key 更新成功", "custom_api_key": new_key}
     )
+
+
+@app.options("/v1/chat/completions")
+async def options_chat_completions():
+    return Response(
+        status_code=200,
+        headers={
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "POST, OPTIONS",
+        },
+    )
+
+
+@app.options("/v1/embeddings")
+async def options_embeddings():
+    return Response(
+        status_code=200,
+        headers={
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "POST, OPTIONS",
+        },
+    )
+
+
+@app.get("/api/keys")
+async def get_keys(
+    page: int = 1, sort_field: str = "add_time", sort_order: str = "desc"
+):
+    allowed_fields = ["add_time", "balance", "usage_count"]
+    allowed_orders = ["asc", "desc"]
+
+    if sort_field not in allowed_fields:
+        sort_field = "add_time"
+    if sort_order not in allowed_orders:
+        sort_order = "desc"
+
+    page_size = 10
+    offset = (page - 1) * page_size
+
+    cursor.execute("SELECT COUNT(*) FROM api_keys")
+    total = cursor.fetchone()[0]
+
+    cursor.execute(
+        f"SELECT key, add_time, balance, usage_count FROM api_keys ORDER BY {sort_field} {sort_order} LIMIT ? OFFSET ?",
+        (page_size, offset),
+    )
+    keys = cursor.fetchall()
+
+    # Format keys as list of dicts
+    key_list = [
+        {
+            "key": row[0],
+            "add_time": row[1],
+            "balance": row[2],
+            "usage_count": row[3],
+        }
+        for row in keys
+    ]
+
+    return JSONResponse(
+        {"keys": key_list, "total": total, "page": page, "page_size": page_size}
+    )
+
+
+@app.post("/api/refresh_key")
+async def refresh_single_key(request: Request):
+    data = await request.json()
+    key = data.get("key")
+
+    if not key:
+        raise HTTPException(status_code=400, detail="未提供API密钥")
+
+    try:
+        valid, balance = await validate_key_async(key)
+
+        if valid and float(balance) > 0:
+            cursor.execute(
+                "UPDATE api_keys SET balance = ? WHERE key = ?", (balance, key)
+            )
+            conn.commit()
+            return JSONResponse({"message": f"密钥更新成功，当前余额: ¥{balance}"})
+        else:
+            cursor.execute("DELETE FROM api_keys WHERE key = ?", (key,))
+            conn.commit()
+            return JSONResponse({"message": "密钥已失效或余额为0，已从池中移除"})
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"刷新密钥失败: {str(e)}")
+
+
+@app.post("/api/delete_key")
+async def delete_key(request: Request):
+    data = await request.json()
+    key = data.get("key")
+
+    if not key:
+        raise HTTPException(status_code=400, detail="未提供API密钥")
+
+    try:
+        cursor.execute("DELETE FROM api_keys WHERE key = ?", (key,))
+        conn.commit()
+        return JSONResponse({"message": "密钥已成功删除"})
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"删除密钥失败: {str(e)}")
 
 
 if __name__ == "__main__":
