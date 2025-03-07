@@ -320,7 +320,7 @@ async def chat_completions(request: Request, background_tasks: BackgroundTasks):
                         f"{BASE_URL}/v1/chat/completions",
                         headers=forward_headers,
                         data=req_body,
-                        timeout=10,
+                        timeout=300,
                     ) as resp:
                         async for chunk in resp.content.iter_any():
                             try:
@@ -369,7 +369,7 @@ async def chat_completions(request: Request, background_tasks: BackgroundTasks):
                     f"{BASE_URL}/v1/chat/completions",
                     headers=forward_headers,
                     data=req_body,
-                    timeout=10,
+                    timeout=300,
                 ) as resp:
                     resp_json = await resp.json()
                     usage = resp_json.get("usage", {})
