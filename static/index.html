@@ -32,7 +32,7 @@
             color: #64748b;
             opacity: 1;
         }
-        
+
         /* 策略选择相关样式 */
         .strategy-select {
             margin: 1rem 0;
@@ -54,9 +54,13 @@
         <div class="strategy-select">
             <label for="callStrategy">调用策略：</label>
             <select id="callStrategy" onchange="updateStrategy()">
-                <option value="random">随机</option>
-                <option value="high">优先消耗高额度</option>
-                <option value="low">优先消耗低额度</option>
+                <option value="random">随机选择</option>
+                <option value="high">优先消耗余额最多</option>
+                <option value="low">优先消耗余额最少</option>
+                <option value="least_used">优先消耗使用次数最少</option>
+                <option value="most_used">优先消耗使用次数最多</option>
+                <option value="oldest">优先消耗添加时间最旧</option>
+                <option value="newest">优先消耗添加时间最新</option>
             </select>
         </div>
         <div class="custom-key" style="text-align:center;">
@@ -139,7 +143,7 @@
                 body: JSON.stringify({ keys })
             });
             const data = await response.json();
-            document.getElementById("message").textContent = data.message;
+            showMessage(data.message, response.ok ? "success" : "error");
             fetchStats();
         }
 

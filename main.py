@@ -15,6 +15,7 @@ import json
 import uvicorn
 import logging
 from uvicorn.config import LOGGING_CONFIG
+import re
 
 LOGGING_CONFIG["formatters"]["default"]["fmt"] = (
     "%(asctime)s - %(levelprefix)s %(message)s"
@@ -113,13 +114,35 @@ async def root():
     return FileResponse("static/index.html")
 
 
+def validate_key_format(key: str) -> bool:
+    """Validate if the key has the correct format (starts with 'sk-' followed by alphanumeric characters)."""
+    return bool(re.match(r"^sk-[a-zA-Z0-9]+$", key))
+
+
+def clean_key(key: str) -> str:
+    """Clean the key by removing any trailing brackets or other content."""
+    # Match the key pattern and return only that part
+    match = re.search(r"(sk-[a-zA-Z0-9]+)", key)
+    if match:
+        return match.group(1)
+    return key.strip()
+
+
 @app.post("/import_keys")
 async def import_keys(request: Request):
     data = await request.json()
     keys_text = data.get("keys", "")
-    keys = [k.strip() for k in keys_text.splitlines() if k.strip()]
+
+    # Clean and validate keys
+    raw_keys = [k.strip() for k in keys_text.splitlines() if k.strip()]
+    cleaned_keys = [clean_key(k) for k in raw_keys]
+    keys = [k for k in cleaned_keys if validate_key_format(k)]
+
+    invalid_format_count = len(raw_keys) - len(keys)
+
     if not keys:
-        raise HTTPException(status_code=400, detail="未提供有效的api-key")
+        return JSONResponse({"message": "未提供有效的 API Key"}, status_code=400)
+
     tasks = []
     # Prepare tasks: for duplicate keys, add a dummy task returning a marker.
     for key in keys:
@@ -128,10 +151,12 @@ async def import_keys(request: Request):
             tasks.append(asyncio.sleep(0, result=("duplicate", key)))
         else:
             tasks.append(validate_key_async(key))
+
     results = await asyncio.gather(*tasks)
     imported_count = 0
     duplicate_count = 0
     invalid_count = 0
+
     for idx, result in enumerate(results):
         if result[0] == "duplicate":
             duplicate_count += 1
@@ -142,9 +167,10 @@ async def import_keys(request: Request):
                 imported_count += 1
             else:
                 invalid_count += 1
+
     return JSONResponse(
         {
-            "message": f"导入成功 {imported_count} 个，有重复 {duplicate_count} 个，无效 {invalid_count} 个"
+            "message": f"导入成功 {imported_count} 个，有重复 {duplicate_count} 个，格式无效 {invalid_format_count} 个，API 验证失败 {invalid_count} 个"
         }
     )
 
@@ -190,10 +216,54 @@ def select_api_key(keys_with_balance):
     # keys_with_balance: list of (key, balance)
     if not keys_with_balance:
         return None
+
+    # 基于余额的策略
     if config.CALL_STRATEGY == "high":
         return max(keys_with_balance, key=lambda x: x[1])[0]
     elif config.CALL_STRATEGY == "low":
         return min(keys_with_balance, key=lambda x: x[1])[0]
+
+    # 基于使用次数的策略
+    elif config.CALL_STRATEGY == "least_used":
+        cursor.execute(
+            "SELECT key, usage_count FROM api_keys WHERE key IN ({})".format(
+                ",".join("?" for _ in range(len(keys_with_balance)))
+            ),
+            [k[0] for k in keys_with_balance],
+        )
+        usage_data = cursor.fetchall()
+        return min(usage_data, key=lambda x: x[1])[0]
+    elif config.CALL_STRATEGY == "most_used":
+        cursor.execute(
+            "SELECT key, usage_count FROM api_keys WHERE key IN ({})".format(
+                ",".join("?" for _ in range(len(keys_with_balance)))
+            ),
+            [k[0] for k in keys_with_balance],
+        )
+        usage_data = cursor.fetchall()
+        return max(usage_data, key=lambda x: x[1])[0]
+
+    # 基于添加时间的策略
+    elif config.CALL_STRATEGY == "oldest":
+        cursor.execute(
+            "SELECT key, add_time FROM api_keys WHERE key IN ({})".format(
+                ",".join("?" for _ in range(len(keys_with_balance)))
+            ),
+            [k[0] for k in keys_with_balance],
+        )
+        time_data = cursor.fetchall()
+        return min(time_data, key=lambda x: x[1])[0]
+    elif config.CALL_STRATEGY == "newest":
+        cursor.execute(
+            "SELECT key, add_time FROM api_keys WHERE key IN ({})".format(
+                ",".join("?" for _ in range(len(keys_with_balance)))
+            ),
+            [k[0] for k in keys_with_balance],
+        )
+        time_data = cursor.fetchall()
+        return max(time_data, key=lambda x: x[1])[0]
+
+    # 默认随机策略
     else:
         return random.choice(keys_with_balance)[0]
 
@@ -429,14 +499,34 @@ async def clear_logs():
 
 @app.get("/config/strategy")
 async def get_strategy():
-    return JSONResponse({"call_strategy": config.CALL_STRATEGY})
+    strategies = [
+        {"value": "random", "label": "随机选择"},
+        {"value": "high", "label": "优先消耗余额最多"},
+        {"value": "low", "label": "优先消耗余额最少"},
+        {"value": "least_used", "label": "优先消耗使用次数最少"},
+        {"value": "most_used", "label": "优先消耗使用次数最多"},
+        {"value": "oldest", "label": "优先消耗添加时间最旧"},
+        {"value": "newest", "label": "优先消耗添加时间最新"},
+    ]
+    return JSONResponse(
+        {"call_strategy": config.CALL_STRATEGY, "strategies": strategies}
+    )
 
 
 @app.post("/config/strategy")
 async def set_strategy(request: Request):
     data = await request.json()
     new_strategy = data.get("call_strategy")
-    if new_strategy not in ["random", "high", "low"]:
+    valid_strategies = [
+        "random",
+        "high",
+        "low",
+        "least_used",
+        "most_used",
+        "oldest",
+        "newest",
+    ]
+    if new_strategy not in valid_strategies:
         raise HTTPException(status_code=400, detail="无效的调用策略")
     update_call_strategy(new_strategy)
     return JSONResponse({"message": "调用策略更新成功", "call_strategy": new_strategy})

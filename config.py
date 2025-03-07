@@ -3,30 +3,34 @@ import os
 
 
 CONFIG_FILE = "config.json"
-default_config = {
-    "call_strategy": "random",  # 可选值："random", "high", "low"
+DEFAULT_CONFIG = {
+    "call_strategy": "random",  # random, high, low, least_used, most_used, oldest, newest
     "custom_api_key": "",  # 空字符串表示不使用自定义api_key
 }
 
 if os.path.exists(CONFIG_FILE):
     try:
         with open(CONFIG_FILE, "r", encoding="utf-8") as f:
-            cfg = json.load(f)
-        CALL_STRATEGY = cfg.get("call_strategy", default_config["call_strategy"])
-        CUSTOM_API_KEY = cfg.get("custom_api_key", default_config["custom_api_key"])
+            config = json.load(f)
     except Exception:
-        CALL_STRATEGY = default_config["call_strategy"]
-        CUSTOM_API_KEY = default_config["custom_api_key"]
+        config = DEFAULT_CONFIG
+        with open(CONFIG_FILE, "w", encoding="utf-8") as f:
+            json.dump(config, f, ensure_ascii=False, indent=2)
 else:
-    CALL_STRATEGY = default_config["call_strategy"]
-    CUSTOM_API_KEY = default_config["custom_api_key"]
+    config = DEFAULT_CONFIG
+    with open(CONFIG_FILE, "w", encoding="utf-8") as f:
+        json.dump(config, f, ensure_ascii=False, indent=2)
+
+CALL_STRATEGY = config.get("call_strategy", DEFAULT_CONFIG["call_strategy"])
+CUSTOM_API_KEY = config.get("custom_api_key", DEFAULT_CONFIG["custom_api_key"])
 
 
 def save_config():
     global CALL_STRATEGY, CUSTOM_API_KEY
-    cfg = {"call_strategy": CALL_STRATEGY, "custom_api_key": CUSTOM_API_KEY}
+    config["call_strategy"] = CALL_STRATEGY
+    config["custom_api_key"] = CUSTOM_API_KEY
     with open(CONFIG_FILE, "w", encoding="utf-8") as f:
-        json.dump(cfg, f, ensure_ascii=False, indent=2)
+        json.dump(config, f, ensure_ascii=False, indent=2)
 
 
 def update_call_strategy(new_strategy: str):
