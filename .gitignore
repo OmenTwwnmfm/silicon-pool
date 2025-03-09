@@ -11,3 +11,4 @@ wheels/
 
 pool.db
 config.json
+nuitka-crash-report.xml

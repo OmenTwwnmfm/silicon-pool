@@ -18,10 +18,9 @@ uv run python -m nuitka \
     --include-module=fastapi \
     --include-module=uvicorn \
     --include-module=aiohttp \
-    --include-data-dir=./static=static \
+    --include-data-dir={MAIN_DIRECTORY}/static=static \
     --output-dir=build \
     --standalone \
-    --windows-icon-from-ico=./static/favicon.ico \
     main.py
 
 echo "Build completed. Check the build directory for the output."
