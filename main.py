@@ -1,6 +1,7 @@
 from fastapi import FastAPI, Request, HTTPException, BackgroundTasks
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse, Response
 from fastapi.staticfiles import StaticFiles
+from starlette.requests import ClientDisconnect
 import config
 from config import (
     update_call_strategy,
@@ -302,7 +303,10 @@ async def chat_completions(request: Request, background_tasks: BackgroundTasks):
     # Forward the request to BASE_URL using the selected key
     forward_headers = dict(request.headers)
     forward_headers["Authorization"] = f"Bearer {selected}"
-    req_body = await request.body()
+    try:
+        req_body = await request.body()
+    except ClientDisconnect:
+        return JSONResponse({"error": "客户端断开连接"}, status_code=499)
     req_json = await request.json()
     model = req_json.get("model", "unknown")
     call_time_stamp = time.time()
@@ -443,7 +447,10 @@ async def completions(request: Request, background_tasks: BackgroundTasks):
     # Forward the request to BASE_URL using the selected key
     forward_headers = dict(request.headers)
     forward_headers["Authorization"] = f"Bearer {selected}"
-    req_body = await request.body()
+    try:
+        req_body = await request.body()
+    except ClientDisconnect:
+        return JSONResponse({"error": "客户端断开连接"}, status_code=499)
     req_json = await request.json()
     model = req_json.get("model", "unknown")
     call_time_stamp = time.time()
