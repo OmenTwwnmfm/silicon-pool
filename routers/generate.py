@@ -319,6 +319,84 @@ async def completions(request: Request, background_tasks: BackgroundTasks):
             raise HTTPException(status_code=500, detail=f"请求转发失败: {str(e)}")
 
 
+@router.post("/v1/images/generations")
+async def images_generations(request: Request, background_tasks: BackgroundTasks):
+    if config.CUSTOM_API_KEY and config.CUSTOM_API_KEY.strip():
+        request_api_key = request.headers.get("Authorization")
+        if request_api_key != f"Bearer {config.CUSTOM_API_KEY}":
+            raise HTTPException(status_code=403, detail="无效的API_KEY")
+
+    cursor.execute("SELECT key, balance FROM api_keys WHERE enabled = 1")
+    keys_with_balance = cursor.fetchall()
+    if not keys_with_balance:
+        raise HTTPException(status_code=500, detail="没有可用的api-key")
+
+    selected = select_api_key(keys_with_balance)
+    if not selected:
+        raise HTTPException(status_code=500, detail="没有可用的api-key")
+
+    # 增加使用计数
+    cursor.execute(
+        "UPDATE api_keys SET usage_count = usage_count + 1 WHERE key = ?", (selected,)
+    )
+    conn.commit()
+
+    forward_headers = dict(request.headers)
+    forward_headers["Authorization"] = f"Bearer {selected}"
+
+    try:
+        req_body = await request.body()
+        req_json = await request.json()
+        model = req_json.get("model", "unknown")
+        call_time_stamp = time.time()
+
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                f"{BASE_URL}/v1/images/generations",
+                headers=forward_headers,
+                data=req_body,
+                timeout=120,  # 图像生成可能需要更长时间
+            ) as resp:
+                data = await resp.json()
+
+                # 图像生成接口可能没有token信息，设置为0
+                prompt_tokens = 0
+                completion_tokens = 0
+                total_tokens = 0
+
+                # 记录API调用
+                log_completion(
+                    selected,
+                    model,
+                    call_time_stamp,
+                    prompt_tokens,
+                    completion_tokens,
+                    total_tokens,
+                    "images_generations",
+                )
+
+                # 后台检查key余额
+                background_tasks.add_task(check_and_remove_key, selected)
+                return JSONResponse(content=data, status_code=resp.status)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"请求转发失败: {str(e)}")
+
+
+@router.options("/v1/images/generations")
+async def options_images_generations():
+    """处理CORS预检请求"""
+    from fastapi.responses import Response
+
+    return Response(
+        status_code=200,
+        headers={
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "POST, OPTIONS",
+            "Access-Control-Allow-Headers": "Content-Type, Authorization",
+        },
+    )
+
+
 @router.get("/v1/models")
 async def list_models(request: Request):
     cursor.execute("SELECT key, balance FROM api_keys WHERE enabled = 1")
