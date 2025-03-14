@@ -105,6 +105,26 @@
             cursor: pointer;
         }
 
+        /* 添加余额为0的key的样式 */
+        tr.zero-balance {
+            background-color: #f9fafb;
+            color: #64748b;
+        }
+
+        tr.zero-balance:hover {
+            background-color: #f1f5f9;
+        }
+
+        .zero-balance-badge {
+            background-color: #e2e8f0;
+            color: #475569;
+            padding: 0.2rem 0.5rem;
+            border-radius: 4px;
+            font-size: 0.8rem;
+            display: inline-block;
+            margin-left: 0.5rem;
+        }
+
         @media (max-width: 768px) {
             .operation-container {
                 flex-direction: column;
@@ -156,6 +176,14 @@
                 <option value="asc">升序</option>
             </select>
         </div>
+        <div class="sort-item">
+            <span class="sort-label">余额过滤:</span>
+            <select id="balanceFilter" class="sort-select" onchange="fetchKeys()">
+                <option value="positive">有余额的 Key</option>
+                <option value="zero">余额用尽的 Key</option>
+                <option value="all">所有 Key</option>
+            </select>
+        </div>
         <div class="button-group">
             <button class="primary" onclick="refreshKeys(); fetchKeys()">🔄 刷新所有密钥</button>
         </div>
@@ -182,6 +210,7 @@
         async function fetchKeys(page = 1) {
             const sortField = document.getElementById('sortField').value;
             const sortOrder = document.getElementById('sortOrder').value;
+            const balanceFilter = document.getElementById('balanceFilter').value;
 
             document.querySelector("#keysTable tbody").innerHTML = `
                 <tr>
@@ -192,7 +221,7 @@
             `;
 
             try {
-                const response = await fetch(`/api/keys?page=${page}&sort_field=${sortField}&sort_order=${sortOrder}`);
+                const response = await fetch(`/api/keys?page=${page}&sort_field=${sortField}&sort_order=${sortOrder}&balance_filter=${balanceFilter}`);
                 const data = await response.json();
                 const tbody = document.querySelector("#keysTable tbody");
                 tbody.innerHTML = "";
@@ -212,6 +241,11 @@
                     const tr = document.createElement("tr");
                     const dt = new Date(key.add_time * 1000);
 
+                    // 检查余额是否为0，为0则添加特殊样式
+                    if (key.balance <= 0) {
+                        tr.classList.add("zero-balance");
+                    }
+
                     // 根据key的启用状态设置显示
                     const statusBadge = key.enabled
                         ? '<span class="status-badge status-enabled">启用</span>'
@@ -221,10 +255,16 @@
                         ? `<span class="icon-button" onclick="toggleKey('${key.key}', false)" title="禁用">🚫</span>`
                         : `<span class="icon-button" onclick="toggleKey('${key.key}', true)" title="启用">✅</span>`;
 
+                    // 余额显示，为0时添加标记
+                    let balanceDisplay = `¥ ${key.balance.toFixed(2)}`;
+                    if (key.balance <= 0) {
+                        balanceDisplay += '<span class="zero-balance-badge">可用于免费模型</span>';
+                    }
+
                     tr.innerHTML = `
                         <td class="key-cell" title="${key.key}">${maskKey(key.key)}</td>
                         <td>${dt.toLocaleString()}</td>
-                        <td>¥ ${key.balance.toFixed(2)}</td>
+                        <td>${balanceDisplay}</td>
                         <td>${key.usage_count}</td>
                         <td>${statusBadge}</td>
                         <td class="key-actions">

@@ -9,24 +9,37 @@ router = APIRouter()
 
 @router.get("/api/keys")
 async def get_keys(
-    page: int = 1, sort_field: str = "add_time", sort_order: str = "desc"
+    page: int = 1, sort_field: str = "add_time", sort_order: str = "desc", balance_filter: str = "all"
 ):
     allowed_fields = ["add_time", "balance", "usage_count", "enabled", "key"]
     allowed_orders = ["asc", "desc"]
+    allowed_filters = ["all", "positive", "zero"]
 
     if sort_field not in allowed_fields:
         sort_field = "add_time"
     if sort_order not in allowed_orders:
         sort_order = "desc"
+    if balance_filter not in allowed_filters:
+        balance_filter = "all"
 
     page_size = 10
     offset = (page - 1) * page_size
 
-    cursor.execute("SELECT COUNT(*) FROM api_keys")
+    # 根据余额筛选条件构建 SQL WHERE 子句
+    filter_clause = ""
+    if balance_filter == "positive":
+        filter_clause = "WHERE balance > 0"
+    elif balance_filter == "zero":
+        filter_clause = "WHERE balance <= 0"
+
+    # 计算总数
+    count_sql = f"SELECT COUNT(*) FROM api_keys {filter_clause}"
+    cursor.execute(count_sql)
     total = cursor.fetchone()[0]
 
+    # 获取分页数据
     cursor.execute(
-        f"SELECT key, add_time, balance, usage_count, enabled FROM api_keys ORDER BY {sort_field} {sort_order} LIMIT ? OFFSET ?",
+        f"SELECT key, add_time, balance, usage_count, enabled FROM api_keys {filter_clause} ORDER BY {sort_field} {sort_order} LIMIT ? OFFSET ?",
         (page_size, offset),
     )
     keys = cursor.fetchall()
@@ -140,25 +153,29 @@ async def import_keys(request: Request):
     imported_count = 0
     duplicate_count = 0
     invalid_count = 0
+    zero_balance_count = 0
 
     for idx, result in enumerate(results):
         if result[0] == "duplicate":
             duplicate_count += 1
         else:
             valid, balance = result
-            if valid and float(balance) > 0:
+            if valid:
                 from db import insert_api_key
 
                 insert_api_key(keys[idx], balance)
                 imported_count += 1
+                if float(balance) <= 0:
+                    zero_balance_count += 1
             else:
                 invalid_count += 1
 
-    return JSONResponse(
-        {
-            "message": f"导入成功 {imported_count} 个，有重复 {duplicate_count} 个，格式无效 {invalid_format_count} 个，API 验证失败 {invalid_count} 个"
-        }
-    )
+    message = f"导入成功 {imported_count} 个"
+    if zero_balance_count > 0:
+        message += f"（其中 {zero_balance_count} 个余额用尽，可用于免费模型）"
+    message += f"，有重复 {duplicate_count} 个，格式无效 {invalid_format_count} 个，API 验证失败 {invalid_count} 个"
+
+    return JSONResponse({"message": message})
 
 
 @router.post("/refresh")
@@ -175,11 +192,16 @@ async def refresh_keys():
     results = await asyncio.gather(*tasks)
 
     removed = 0
+    updated = 0
+    zero_balance = 0
     for key, (valid, balance) in zip(all_keys, results):
-        if valid and float(balance) > 0:
+        if valid:
             cursor.execute(
                 "UPDATE api_keys SET balance = ? WHERE key = ?", (balance, key)
             )
+            updated += 1
+            if float(balance) <= 0:
+                zero_balance += 1
         else:
             cursor.execute("DELETE FROM api_keys WHERE key = ?", (key,))
             removed += 1
@@ -191,12 +213,12 @@ async def refresh_keys():
     new_balance = cursor.fetchone()[0]
     balance_change = new_balance - initial_balance
 
-    message = ""
+    message = f"刷新完成，更新 {updated} 个 Key（其中 {zero_balance} 个余额为0，可用于免费模型），移除 {removed} 个无效的 Key"
     if balance_change > 0:
-        message = f"刷新完成，共移除 {removed} 个余额用尽或无效的 Key，余额增加了{round(balance_change, 2)}"
+        message += f"，余额增加了{round(balance_change, 2)}"
     else:
         balance_decrease = abs(balance_change)
-        message = f"刷新完成，共移除 {removed} 个余额用尽或无效的 Key，余额减少了{round(balance_decrease, 2)}"
+        message += f"，余额减少了{round(balance_decrease, 2)}"
 
     return JSONResponse({"message": message})
 

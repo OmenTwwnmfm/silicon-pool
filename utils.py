@@ -38,8 +38,16 @@ def clean_key(key: str) -> str:
     return key.strip()
 
 
-def select_api_key(keys_with_balance):
-    """根据配置策略选择一个API密钥"""
+def select_api_key(keys_with_balance, use_zero_balance=False):
+    """根据配置策略选择一个API密钥
+    
+    Args:
+        keys_with_balance: API密钥及余额的列表
+        use_zero_balance: 是否优先使用余额为0的密钥
+    
+    Returns:
+        选择的API密钥
+    """
     # keys_with_balance: list of (key, balance)
     if not keys_with_balance:
         return None
@@ -55,6 +63,23 @@ def select_api_key(keys_with_balance):
 
     if not enabled_keys:
         return None
+    
+    # 如果指定使用余额为0的key，则筛选出余额为0的key
+    if use_zero_balance:
+        zero_balance_keys = [k for k in enabled_keys if float(k[1]) <= 0]
+        if zero_balance_keys:
+            # 使用余额为0的key时，固定使用随机策略
+            return random.choice(zero_balance_keys)[0]
+        # 如果没有余额为0的key，则返回None，表示无法处理此请求
+        return None
+    
+    # 如果不使用余额为0的key，则筛选出余额大于0的key
+    positive_balance_keys = [k for k in enabled_keys if float(k[1]) > 0]
+    if not positive_balance_keys:
+        return None
+    
+    # 使用正常的选择策略
+    enabled_keys = positive_balance_keys
 
     # 基于余额的策略
     if config.CALL_STRATEGY == "high":
@@ -108,15 +133,14 @@ def select_api_key(keys_with_balance):
 
 
 async def check_and_remove_key(key: str):
-    """检查密钥的有效性并在需要时从池中移除"""
+    """检查密钥的有效性并更新余额，但不删除余额为0的有效key"""
     valid, balance = await validate_key_async(key)
     logger = logging.getLogger(__name__)
     if valid:
         logger.info(f"Key validation successful: {key[:8]}*** - Balance: {balance}")
-        if float(balance) <= 0:
-            logger.warning(f"Removing key {key[:8]}*** due to zero balance")
-            cursor.execute("DELETE FROM api_keys WHERE key = ?", (key,))
-            conn.commit()
+        # 更新余额
+        cursor.execute("UPDATE api_keys SET balance = ? WHERE key = ?", (balance, key))
+        conn.commit()
     else:
         logger.warning(f"Invalid key detected: {key[:8]}*** - Removing from pool")
         cursor.execute("DELETE FROM api_keys WHERE key = ?", (key,))

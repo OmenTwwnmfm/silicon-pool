@@ -44,7 +44,8 @@
             font-family: inherit;
             font-size: 1rem;
             transition: border-color 0.3s ease;
-            margin-right: 20px; /* 为文本框右侧添加边距 */
+            margin-right: 20px;
+            /* 为文本框右侧添加边距 */
             box-sizing: border-box;
         }
 
@@ -83,7 +84,8 @@
             padding: 0.7rem;
             border-radius: 8px;
             border: 2px solid #e2e8f0;
-            margin-right: 1rem; /* 添加右侧边距 */
+            margin-right: 1rem;
+            /* 添加右侧边距 */
             flex: 1;
             max-width: 300px;
             min-width: 200px;
@@ -98,11 +100,11 @@
                 flex-direction: column;
                 align-items: flex-start;
             }
-            
+
             .api-settings-form label {
                 margin-bottom: 0.5rem;
             }
-            
+
             .api-settings-form select,
             .api-settings-form input {
                 width: 100%;
@@ -144,6 +146,14 @@
                     <input type="password" id="customApiKey" placeholder="留空表示不使用">
                     <button type="button" class="primary" onclick="updateCustomApiKey()">保存 token</button>
                 </div>
+                <div class="setting-row">
+                    <label for="freeModelApiKey">免费模型 API token：</label>
+                    <input type="password" id="freeModelApiKey" placeholder="留空表示不使用">
+                    <button type="button" class="primary" onclick="updateFreeModelApiKey()">保存 token</button>
+                </div>
+                <div class="info-text" style="margin-left: 150px; margin-top: 5px; color: #64748b; font-size: 0.9rem;">
+                    注意：设置此 token 后，使用此 token 调用 API 时将仅使用余额已用尽的 Key 来访问免费模型
+                </div>
             </form>
         </div>
 
@@ -173,36 +183,36 @@
     </div>
 
     <script>
-        document.addEventListener('DOMContentLoaded', function() {
+        document.addEventListener('DOMContentLoaded', function () {
             const credentialsForm = document.getElementById('credentialsForm');
-            
-            credentialsForm.addEventListener('submit', async function(e) {
+
+            credentialsForm.addEventListener('submit', async function (e) {
                 e.preventDefault();
-                
+
                 const username = document.getElementById('username').value;
                 const password = document.getElementById('password').value;
                 const confirmPassword = document.getElementById('confirmPassword').value;
-                
+
                 // 验证密码是否一致
                 if (password !== confirmPassword) {
                     showMessage('两次输入的密码不一致', 'error');
                     return;
                 }
-                
+
                 try {
                     const response = await fetch('/api/update_credentials', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ username, password })
                     });
-                    
+
                     const data = await response.json();
-                    
+
                     if (response.ok) {
                         showMessage('管理员凭据已成功更新，需要重新登录', 'success');
                         // 清空表单
                         credentialsForm.reset();
-                        
+
                         // 3秒后登出
                         setTimeout(() => {
                             logout();
@@ -219,6 +229,7 @@
             // 加载调用策略与自定义 api_key
             loadStrategy();
             loadCustomApiKey();
+            loadFreeModelApiKey();
         });
 
         async function loadStrategy() {
@@ -247,6 +258,14 @@
 
         async function updateCustomApiKey() {
             const newKey = document.getElementById("customApiKey").value;
+            const freeModelKey = document.getElementById("freeModelApiKey").value;
+
+            // 检查是否与免费模型 token 冲突
+            if (newKey && newKey === freeModelKey) {
+                showMessage("转发 API token 不能与免费模型 API token 相同", "error");
+                return;
+            }
+
             const response = await fetch("/config/custom_api_key", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
@@ -254,6 +273,46 @@
             });
             const data = await response.json();
             showMessage(data.message, "success");
+        }
+
+        async function loadFreeModelApiKey() {
+            try {
+                const response = await fetch("/config/free_model_api_key");
+                const data = await response.json();
+                document.getElementById("freeModelApiKey").value = data.free_model_api_key;
+            } catch (error) {
+                console.error('无法加载免费模型 API token:', error);
+            }
+        }
+
+        async function updateFreeModelApiKey() {
+            const newKey = document.getElementById("freeModelApiKey").value;
+            const customKey = document.getElementById("customApiKey").value;
+
+            // 检查是否与一般 API token 冲突
+            if (newKey && newKey === customKey) {
+                showMessage("免费模型 API token 不能与转发 API token 相同", "error");
+                return;
+            }
+
+            try {
+                const response = await fetch("/config/free_model_api_key", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ free_model_api_key: newKey })
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    showMessage(data.message, "success");
+                } else {
+                    showMessage(data.message || '更新免费模型 API token 失败', 'error');
+                }
+            } catch (error) {
+                showMessage('更新失败，请稍后重试', 'error');
+                console.error('更新免费模型 API token 失败:', error);
+            }
         }
     </script>
 </body>

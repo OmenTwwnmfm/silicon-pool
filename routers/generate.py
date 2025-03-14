@@ -16,7 +16,15 @@ BASE_URL = "https://api.siliconflow.cn"
 
 @router.post("/v1/chat/completions")
 async def chat_completions(request: Request, background_tasks: BackgroundTasks):
-    if config.CUSTOM_API_KEY and config.CUSTOM_API_KEY.strip():
+    # 检查是否应该使用余额为0的key
+    use_zero_balance = False
+    if config.FREE_MODEL_API_KEY and config.FREE_MODEL_API_KEY.strip():
+        request_api_key = request.headers.get("Authorization", "")
+        if request_api_key == f"Bearer {config.FREE_MODEL_API_KEY}":
+            use_zero_balance = True
+    
+    # 如果不使用余额为0的key，检查自定义API KEY
+    if not use_zero_balance and config.CUSTOM_API_KEY and config.CUSTOM_API_KEY.strip():
         request_api_key = request.headers.get("Authorization")
         if request_api_key != f"Bearer {config.CUSTOM_API_KEY}":
             raise HTTPException(status_code=403, detail="无效的API_KEY")
@@ -26,9 +34,12 @@ async def chat_completions(request: Request, background_tasks: BackgroundTasks):
     if not keys_with_balance:
         raise HTTPException(status_code=500, detail="没有可用的api-key")
 
-    selected = select_api_key(keys_with_balance)
+    selected = select_api_key(keys_with_balance, use_zero_balance)
     if not selected:
-        raise HTTPException(status_code=500, detail="没有可用的api-key")
+        if use_zero_balance:
+            raise HTTPException(status_code=500, detail="没有余额为0的可用api-key")
+        else:
+            raise HTTPException(status_code=500, detail="没有可用的api-key")
 
     # 增加使用计数
     cursor.execute(
@@ -63,7 +74,7 @@ async def chat_completions(request: Request, background_tasks: BackgroundTasks):
                         f"{BASE_URL}/v1/chat/completions",
                         headers=forward_headers,
                         data=req_body,
-                        timeout=300,
+                        timeout=1800,
                     ) as resp:
                         async for chunk in resp.content.iter_any():
                             try:
@@ -115,7 +126,7 @@ async def chat_completions(request: Request, background_tasks: BackgroundTasks):
                     f"{BASE_URL}/v1/chat/completions",
                     headers=forward_headers,
                     data=req_body,
-                    timeout=300,
+                    timeout=1800,
                 ) as resp:
                     resp_json = await resp.json()
                     usage = resp_json.get("usage", {})
@@ -143,7 +154,15 @@ async def chat_completions(request: Request, background_tasks: BackgroundTasks):
 
 @router.post("/v1/embeddings")
 async def embeddings(request: Request, background_tasks: BackgroundTasks):
-    if config.CUSTOM_API_KEY and config.CUSTOM_API_KEY.strip():
+    # 检查是否应该使用余额为0的key
+    use_zero_balance = False
+    if config.FREE_MODEL_API_KEY and config.FREE_MODEL_API_KEY.strip():
+        request_api_key = request.headers.get("Authorization", "")
+        if request_api_key == f"Bearer {config.FREE_MODEL_API_KEY}":
+            use_zero_balance = True
+    
+    # 如果不使用余额为0的key，检查自定义API KEY
+    if not use_zero_balance and config.CUSTOM_API_KEY and config.CUSTOM_API_KEY.strip():
         request_api_key = request.headers.get("Authorization")
         if request_api_key != f"Bearer {config.CUSTOM_API_KEY}":
             raise HTTPException(status_code=403, detail="无效的API_KEY")
@@ -153,9 +172,12 @@ async def embeddings(request: Request, background_tasks: BackgroundTasks):
     if not keys_with_balance:
         raise HTTPException(status_code=500, detail="没有可用的api-key")
 
-    selected = select_api_key(keys_with_balance)
+    selected = select_api_key(keys_with_balance, use_zero_balance)
     if not selected:
-        raise HTTPException(status_code=500, detail="没有可用的api-key")
+        if use_zero_balance:
+            raise HTTPException(status_code=500, detail="没有余额为0的可用api-key")
+        else:
+            raise HTTPException(status_code=500, detail="没有可用的api-key")
 
     forward_headers = dict(request.headers)
     forward_headers["Authorization"] = f"Bearer {selected}"
@@ -172,16 +194,18 @@ async def embeddings(request: Request, background_tasks: BackgroundTasks):
                 # 记录嵌入调用
                 req_json = await request.json()
                 model = req_json.get("model", "unknown")
-                input_tokens = len(req_json.get("input", [])) * 100  # 估计的token数
+                resp_json = await resp.json()
+                usage = resp_json.get("usage", {})
+                prompt_tokens = usage.get("prompt_tokens", 0)
                 call_time_stamp = time.time()
 
                 log_completion(
                     selected,
                     model,
                     call_time_stamp,
-                    input_tokens,
+                    prompt_tokens,
                     0,
-                    input_tokens,
+                    prompt_tokens,
                     "embeddings",
                 )
 
@@ -194,7 +218,15 @@ async def embeddings(request: Request, background_tasks: BackgroundTasks):
 
 @router.post("/v1/completions")
 async def completions(request: Request, background_tasks: BackgroundTasks):
-    if config.CUSTOM_API_KEY and config.CUSTOM_API_KEY.strip():
+    # 检查是否应该使用余额为0的key
+    use_zero_balance = False
+    if config.FREE_MODEL_API_KEY and config.FREE_MODEL_API_KEY.strip():
+        request_api_key = request.headers.get("Authorization", "")
+        if request_api_key == f"Bearer {config.FREE_MODEL_API_KEY}":
+            use_zero_balance = True
+    
+    # 如果不使用余额为0的key，检查自定义API KEY
+    if not use_zero_balance and config.CUSTOM_API_KEY and config.CUSTOM_API_KEY.strip():
         request_api_key = request.headers.get("Authorization")
         if request_api_key != f"Bearer {config.CUSTOM_API_KEY}":
             raise HTTPException(status_code=403, detail="无效的API_KEY")
@@ -204,9 +236,12 @@ async def completions(request: Request, background_tasks: BackgroundTasks):
     if not keys_with_balance:
         raise HTTPException(status_code=500, detail="没有可用的api-key")
 
-    selected = select_api_key(keys_with_balance)
+    selected = select_api_key(keys_with_balance, use_zero_balance)
     if not selected:
-        raise HTTPException(status_code=500, detail="没有可用的api-key")
+        if use_zero_balance:
+            raise HTTPException(status_code=500, detail="没有余额为0的可用api-key")
+        else:
+            raise HTTPException(status_code=500, detail="没有可用的api-key")
 
     # 增加使用计数
     cursor.execute(

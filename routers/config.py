@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Request, HTTPException
 from fastapi.responses import JSONResponse
 import config
-from config import update_call_strategy, update_custom_api_key
+from config import update_call_strategy, update_custom_api_key, update_free_model_api_key
 
 router = APIRouter()
 
@@ -53,4 +53,27 @@ async def set_custom_api_key(request: Request):
     update_custom_api_key(new_key)
     return JSONResponse(
         {"message": "自定义 api_key 更新成功", "custom_api_key": new_key}
+    )
+
+
+@router.get("/config/free_model_api_key")
+async def get_free_model_api_key():
+    return JSONResponse({"free_model_api_key": config.FREE_MODEL_API_KEY})
+
+
+@router.post("/config/free_model_api_key")
+async def set_free_model_api_key(request: Request):
+    data = await request.json()
+    new_key = data.get("free_model_api_key", "")
+    
+    # 验证不与一般 API key 相同
+    if new_key and new_key == config.CUSTOM_API_KEY:
+        return JSONResponse(
+            {"message": "免费模型 API token 不能与一般 API token 相同", "free_model_api_key": config.FREE_MODEL_API_KEY},
+            status_code=400
+        )
+    
+    update_free_model_api_key(new_key)
+    return JSONResponse(
+        {"message": "免费模型 API token 更新成功", "free_model_api_key": new_key}
     )
