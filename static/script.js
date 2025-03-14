@@ -49,7 +49,8 @@ async function logout() {
 async function fetchStats() {
     const response = await fetch("/stats");
     const data = await response.json();
-    document.getElementById("keyCount").textContent = data.key_count;
+    document.getElementById("totalKeyCount").textContent = data.total_key_count;
+    document.getElementById("positiveBalanceCount").textContent = data.positive_balance_count;
     document.getElementById("totalBalance").textContent = Number(data.total_balance).toFixed(2);
 }
 

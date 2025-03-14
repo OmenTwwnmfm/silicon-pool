@@ -103,12 +103,11 @@
         <div id="message"></div>
 
         <div id="stats">
-            📊 当前 Key 数量：<span id="keyCount">0</span> 个
+            📊 当前 Key 数量：<span id="totalKeyCount">0</span> 个
+            | 其中有余额：<span id="positiveBalanceCount">0</span> 个
             | 余额总量：¥ <span id="totalBalance">0</span>
             | 今日调用次数：<span id="todayCalls">0</span> 次
             | 今日消耗 Token：<span id="todayTokens">0</span> 个
-            | 本月调用次数：<span id="monthCalls">0</span> 次
-            | 本月消耗 Token：<span id="monthTokens">0</span> 个
         </div>
 
         <textarea id="keys" placeholder="请每行输入一个 API Key，支持空行，支持逗号分割，支持 Key 后面有括号"></textarea>
@@ -136,6 +135,14 @@
                     <option value="key_desc">字典序降序</option>
                 </select>
             </div>
+            <div class="export-item">
+                <span class="export-label">导出筛选:</span>
+                <select id="balanceFilter" class="export-select">
+                    <option value="all">导出所有 Key</option>
+                    <option value="positive">仅导出有余额的 Key</option>
+                    <option value="zero">仅导出余额用尽的 Key</option>
+                </select>
+            </div>
             <div class="button-group">
                 <button class="secondary" onclick="exportKeys()">📤 导出为 TXT</button>
             </div>
@@ -161,10 +168,11 @@
         function exportKeys() {
             const format = document.getElementById('exportFormat').value;
             const sortOrder = document.getElementById('sortOrder').value;
-            window.location.href = `/export_keys?format=${format}&sort=${sortOrder}`;
+            const balanceFilter = document.getElementById('balanceFilter').value;
+            window.location.href = `/export_keys?format=${format}&sort=${sortOrder}&filter=${balanceFilter}`;
         }
 
-        // 从统计页加载每日和每月统计信息
+        // 从统计页加载每日统计信息
         async function loadDailyStats() {
             try {
                 const response = await fetch('/api/stats/daily');
@@ -181,26 +189,9 @@
             }
         }
 
-        async function loadMonthlyStats() {
-            try {
-                const response = await fetch('/api/stats/monthly');
-                const data = await response.json();
-
-                // 更新统计摘要
-                const totalCalls = data.calls.reduce((a, b) => a + b, 0);
-                const totalInputTokens = data.input_tokens.reduce((a, b) => a + b, 0);
-                const totalOutputTokens = data.output_tokens.reduce((a, b) => a + b, 0);
-                document.getElementById('monthCalls').textContent = totalCalls;
-                document.getElementById('monthTokens').textContent = totalInputTokens + totalOutputTokens;
-            } catch (error) {
-                console.error('Failed to load monthly stats:', error);
-            }
-        }
-
         // 初始化加载
         fetchStats();
         loadDailyStats();
-        loadMonthlyStats();
     </script>
 </body>
 

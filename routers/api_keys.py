@@ -9,7 +9,10 @@ router = APIRouter()
 
 @router.get("/api/keys")
 async def get_keys(
-    page: int = 1, sort_field: str = "add_time", sort_order: str = "desc", balance_filter: str = "all"
+    page: int = 1,
+    sort_field: str = "add_time",
+    sort_order: str = "desc",
+    balance_filter: str = "all",
 ):
     allowed_fields = ["add_time", "balance", "usage_count", "enabled", "key"]
     allowed_orders = ["asc", "desc"]
@@ -180,7 +183,8 @@ async def import_keys(request: Request):
 
 @router.post("/refresh")
 async def refresh_keys():
-    cursor.execute("SELECT key, balance FROM api_keys")
+    # 在获取待筛选的key时仅获取余额大于0的key
+    cursor.execute("SELECT key, balance FROM api_keys WHERE balance > 0")
     key_balance_map = {row[0]: row[1] for row in cursor.fetchall()}
     all_keys = list(key_balance_map.keys())
 
@@ -209,11 +213,11 @@ async def refresh_keys():
     conn.commit()
 
     # 计算新的总余额
-    cursor.execute("SELECT COALESCE(SUM(balance), 0) FROM api_keys")
+    cursor.execute("SELECT COALESCE(SUM(balance), 0) FROM api_keys WHERE balance > 0")
     new_balance = cursor.fetchone()[0]
     balance_change = new_balance - initial_balance
 
-    message = f"刷新完成，更新 {updated} 个 Key（其中 {zero_balance} 个余额为0，可用于免费模型），移除 {removed} 个无效的 Key"
+    message = f"刷新完成，更新 {updated} 个 Key（其中 {zero_balance} 个余额用尽），移除 {removed} 个无效的 Key"
     if balance_change > 0:
         message += f"，余额增加了{round(balance_change, 2)}"
     else:
@@ -224,7 +228,9 @@ async def refresh_keys():
 
 
 @router.get("/export_keys")
-async def export_keys(format: str = "line", sort: str = "balance_desc"):
+async def export_keys(
+    format: str = "line", sort: str = "balance_desc", filter: str = "all"
+):
     # 根据排序方式构建SQL语句
     sort_sql = ""
     if sort == "balance_desc":
@@ -235,11 +241,18 @@ async def export_keys(format: str = "line", sort: str = "balance_desc"):
         sort_sql = "ORDER BY key ASC"
     elif sort == "key_desc":
         sort_sql = "ORDER BY key DESC"
-    
+
+    # 添加余额过滤
+    filter_sql = ""
+    if filter == "positive":
+        filter_sql = "WHERE balance > 0"
+    elif filter == "zero":
+        filter_sql = "WHERE balance <= 0"
+
     # 执行查询
-    cursor.execute(f"SELECT key, balance FROM api_keys {sort_sql}")
+    cursor.execute(f"SELECT key, balance FROM api_keys {filter_sql} {sort_sql}")
     all_keys = cursor.fetchall()
-    
+
     # 根据格式生成导出内容
     content = ""
     if format == "line":
@@ -248,16 +261,30 @@ async def export_keys(format: str = "line", sort: str = "balance_desc"):
         content = "\n".join(f"{row[0]} (余额: ¥{row[1]:.2f})" for row in all_keys)
     elif format == "csv":
         content = ",".join(row[0] for row in all_keys)
-        
+
     headers = {"Content-Disposition": "attachment; filename=keys.txt"}
     return Response(content=content, media_type="text/plain", headers=headers)
 
 
 @router.get("/stats")
 async def stats():
-    cursor.execute("SELECT COUNT(*), COALESCE(SUM(balance), 0) FROM api_keys")
-    count, total_balance = cursor.fetchone()
-    return JSONResponse({"key_count": count, "total_balance": total_balance})
+    # Get count and total balance of keys with positive balance
+    cursor.execute("SELECT COUNT(*), COALESCE(SUM(balance), 0) FROM api_keys WHERE balance > 0")
+    positive_count, total_balance = cursor.fetchone()
+    
+    # Get count of keys with zero balance
+    cursor.execute("SELECT COUNT(*) FROM api_keys WHERE balance <= 0")
+    zero_balance_count = cursor.fetchone()[0]
+    
+    # Get total key count
+    total_key_count = positive_count + zero_balance_count
+    
+    return JSONResponse({
+        "total_key_count": total_key_count,
+        "positive_balance_count": positive_count,
+        "zero_balance_count": zero_balance_count,
+        "total_balance": total_balance
+    })
 
 
 # CORS预检请求处理
