@@ -39,7 +39,7 @@ async def get_logs(page: int = 1, date_filter: str = "all", model: str = "all"):
 
     # 获取过滤后的日志
     logs_query = f"""
-        SELECT used_key, model, call_time, input_tokens, output_tokens, total_tokens 
+        SELECT used_key, model, call_time, input_tokens, output_tokens, total_tokens, endpoint 
         FROM logs 
         WHERE {where_clause} 
         ORDER BY call_time DESC 
@@ -57,6 +57,7 @@ async def get_logs(page: int = 1, date_filter: str = "all", model: str = "all"):
             "input_tokens": row[3],
             "output_tokens": row[4],
             "total_tokens": row[5],
+            "endpoint": row[6] or "未知",  # 为了向后兼容，对空值使用默认值
         }
         for row in logs
     ]

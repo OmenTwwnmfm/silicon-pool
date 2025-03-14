@@ -107,6 +107,7 @@
                 <tr>
                     <th>使用的 Key</th>
                     <th>模型</th>
+                    <th>接口</th>
                     <th>调用时间</th>
                     <th>输入 Token</th>
                     <th>输出 Token</th>
@@ -173,7 +174,7 @@
 
             document.querySelector("#logsTable tbody").innerHTML = `
                 <tr>
-                    <td colspan="6" style="padding: 2rem; color: #64748b;">
+                    <td colspan="7" style="padding: 2rem; color: #64748b;">
                         ⏳ 正在加载日志...
                     </td>
                 </tr>
@@ -188,7 +189,7 @@
             if (data.logs.length === 0) {
                 tbody.innerHTML = `
                     <tr>
-                        <td colspan="6" style="padding: 2rem; color: #64748b; text-align: center;">
+                        <td colspan="7" style="padding: 2rem; color: #64748b; text-align: center;">
                             暂无符合条件的日志记录
                         </td>
                     </tr>
@@ -200,9 +201,17 @@
             data.logs.forEach(log => {
                 const tr = document.createElement("tr");
                 const dt = new Date(log.call_time * 1000);
+
+                // 格式化接口显示
+                let displayEndpoint = log.endpoint || "未知";
+                if (displayEndpoint === "chat_completions") displayEndpoint = "对话";
+                else if (displayEndpoint === "completions") displayEndpoint = "补全";
+                else if (displayEndpoint === "embeddings") displayEndpoint = "嵌入";
+
                 tr.innerHTML = `
                     <td class="key-cell" title="${log.used_key}">${maskKey(log.used_key)}</td>
                     <td>${log.model}</td>
+                    <td>${displayEndpoint}</td>
                     <td>${dt.toLocaleString()}</td>
                     <td>${log.input_tokens}</td>
                     <td>${log.output_tokens}</td>

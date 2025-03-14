@@ -57,7 +57,7 @@
             | 本月消耗 Token：<span id="monthTokens">0</span> 个
         </div>
 
-        <textarea id="keys" placeholder="请每行输入一个 API Key..."></textarea>
+        <textarea id="keys" placeholder="请每行输入一个 API Key，支持空行，支持逗号分割，支持 Key 后面有括号"></textarea>
 
         <div class="button-group">
             <button class="primary" onclick="importKeys()">📥 导入 Key</button>
@@ -69,6 +69,7 @@
     <script>
         async function importKeys() {
             document.getElementById("message").style.display = 'block';
+            document.getElementById("message").className = "info";
             document.getElementById("message").textContent = "正在导入，请稍候...";
             const keys = document.getElementById("keys").value;
             const response = await fetch("/import_keys", {

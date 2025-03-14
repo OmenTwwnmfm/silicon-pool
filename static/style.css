@@ -93,6 +93,13 @@ button:active {
     display: block;
 }
 
+#message.info {
+    background-color: #f1f5f9;
+    color: #475569;
+    border: 1px solid #94a3b8;
+    display: block;
+}
+
 #stats {
     padding: 1rem;
     background-color: #dbeafe;

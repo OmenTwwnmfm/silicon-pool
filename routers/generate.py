@@ -90,6 +90,7 @@ async def chat_completions(request: Request, background_tasks: BackgroundTasks):
                     prompt_tokens,
                     completion_tokens,
                     total_tokens,
+                    "chat_completions",
                 )
                 await check_and_remove_key(selected)
 
@@ -130,6 +131,7 @@ async def chat_completions(request: Request, background_tasks: BackgroundTasks):
                         prompt_tokens,
                         completion_tokens,
                         total_tokens,
+                        "chat_completions",
                     )
 
                     # 后台检查key余额
@@ -167,6 +169,22 @@ async def embeddings(request: Request, background_tasks: BackgroundTasks):
                 timeout=30,
             ) as resp:
                 data = await resp.json()
+                # 记录嵌入调用
+                req_json = await request.json()
+                model = req_json.get("model", "unknown")
+                input_tokens = len(req_json.get("input", [])) * 100  # 估计的token数
+                call_time_stamp = time.time()
+
+                log_completion(
+                    selected,
+                    model,
+                    call_time_stamp,
+                    input_tokens,
+                    0,
+                    input_tokens,
+                    "embeddings",
+                )
+
                 # 后台检查key余额
                 background_tasks.add_task(check_and_remove_key, selected)
                 return JSONResponse(content=data, status_code=resp.status)
@@ -250,6 +268,7 @@ async def completions(request: Request, background_tasks: BackgroundTasks):
                     prompt_tokens,
                     completion_tokens,
                     total_tokens,
+                    "completions",
                 )
                 await check_and_remove_key(selected)
 
@@ -290,6 +309,7 @@ async def completions(request: Request, background_tasks: BackgroundTasks):
                         prompt_tokens,
                         completion_tokens,
                         total_tokens,
+                        "completions",
                     )
 
                     # 后台检查key余额

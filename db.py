@@ -28,7 +28,8 @@ def init_db():
         call_time REAL,
         input_tokens INTEGER,
         output_tokens INTEGER,
-        total_tokens INTEGER
+        total_tokens INTEGER,
+        endpoint TEXT
     )
     """)
     conn.commit()
@@ -50,10 +51,11 @@ def log_completion(
     input_tokens: int,
     output_tokens: int,
     total_tokens: int,
+    endpoint: str,
 ):
     """记录API调用日志"""
     cursor.execute(
-        "INSERT INTO logs (used_key, model, call_time, input_tokens, output_tokens, total_tokens) VALUES (?, ?, ?, ?, ?, ?)",
-        (used_key, model, call_time, input_tokens, output_tokens, total_tokens),
+        "INSERT INTO logs (used_key, model, call_time, input_tokens, output_tokens, total_tokens, endpoint) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (used_key, model, call_time, input_tokens, output_tokens, total_tokens, endpoint),
     )
     conn.commit()
