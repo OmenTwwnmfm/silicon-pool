@@ -202,12 +202,33 @@ async def refresh_keys():
 
 
 @router.get("/export_keys")
-async def export_keys():
-    cursor.execute("SELECT key FROM api_keys")
+async def export_keys(format: str = "line", sort: str = "balance_desc"):
+    # 根据排序方式构建SQL语句
+    sort_sql = ""
+    if sort == "balance_desc":
+        sort_sql = "ORDER BY balance DESC"
+    elif sort == "balance_asc":
+        sort_sql = "ORDER BY balance ASC"
+    elif sort == "key_asc":
+        sort_sql = "ORDER BY key ASC"
+    elif sort == "key_desc":
+        sort_sql = "ORDER BY key DESC"
+    
+    # 执行查询
+    cursor.execute(f"SELECT key, balance FROM api_keys {sort_sql}")
     all_keys = cursor.fetchall()
-    keys = "\n".join(row[0] for row in all_keys)
+    
+    # 根据格式生成导出内容
+    content = ""
+    if format == "line":
+        content = "\n".join(row[0] for row in all_keys)
+    elif format == "line_with_balance":
+        content = "\n".join(f"{row[0]} (余额: ¥{row[1]:.2f})" for row in all_keys)
+    elif format == "csv":
+        content = ",".join(row[0] for row in all_keys)
+        
     headers = {"Content-Disposition": "attachment; filename=keys.txt"}
-    return Response(content=keys, media_type="text/plain", headers=headers)
+    return Response(content=content, media_type="text/plain", headers=headers)
 
 
 @router.get("/stats")
