@@ -18,7 +18,7 @@ uv run python -m nuitka \
     --include-module=fastapi \
     --include-module=uvicorn \
     --include-module=aiohttp \
-    --include-data-dir={MAIN_DIRECTORY}/static=static \
+    --include-data-dir=./static=static \
     --output-dir=build \
     --standalone \
     main.py
