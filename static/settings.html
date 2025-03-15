@@ -142,6 +142,14 @@
                     <button type="button" class="primary" onclick="updateStrategy()">保存策略</button>
                 </div>
                 <div class="setting-row">
+                    <label for="refreshInterval">自动刷新间隔(分钟)：</label>
+                    <input type="number" id="refreshInterval" min="0" placeholder="0表示不自动刷新">
+                    <button type="button" class="primary" onclick="updateRefreshInterval()">保存间隔</button>
+                </div>
+                <div class="info-text" style="margin-left: 150px; margin-top: 5px; color: #64748b; font-size: 0.9rem;">
+                    注意：设置为0表示不自动刷新，建议设置较长间隔以避免频繁API调用
+                </div>
+                <div class="setting-row">
                     <label for="customApiKey">转发 API token：</label>
                     <input type="password" id="customApiKey" placeholder="留空表示不使用">
                     <button type="button" class="primary" onclick="updateCustomApiKey()">保存 token</button>
@@ -230,6 +238,7 @@
             loadStrategy();
             loadCustomApiKey();
             loadFreeModelApiKey();
+            loadRefreshInterval();
         });
 
         async function loadStrategy() {
@@ -248,6 +257,39 @@
             });
             const data = await response.json();
             showMessage(data.message, "success");
+        }
+
+        async function loadRefreshInterval() {
+            try {
+                const response = await fetch("/config/refresh_interval");
+                const data = await response.json();
+                document.getElementById("refreshInterval").value = data.refresh_interval;
+            } catch (error) {
+                console.error('无法加载刷新间隔设置:', error);
+            }
+        }
+
+        async function updateRefreshInterval() {
+            const interval = parseInt(document.getElementById("refreshInterval").value) || 0;
+
+            if (interval < 0) {
+                showMessage("刷新间隔不能为负数", "error");
+                return;
+            }
+
+            try {
+                const response = await fetch("/config/refresh_interval", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ refresh_interval: interval })
+                });
+
+                const data = await response.json();
+                showMessage(data.message, "success");
+            } catch (error) {
+                showMessage('更新失败，请稍后重试', 'error');
+                console.error('更新刷新间隔失败:', error);
+            }
         }
 
         async function loadCustomApiKey() {

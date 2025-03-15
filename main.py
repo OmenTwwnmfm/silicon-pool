@@ -3,6 +3,7 @@ from fastapi.staticfiles import StaticFiles
 import uvicorn
 import logging
 from uvicorn.config import LOGGING_CONFIG
+from contextlib import asynccontextmanager
 from db import init_db
 from routers import api_keys, generate, logs, config, static, stats, auth
 
@@ -23,9 +24,18 @@ LOGGING_CONFIG["loggers"]["root"] = {
 logging.config.dictConfig(LOGGING_CONFIG)
 logging.basicConfig(level=logging.INFO)
 
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    yield
+    config.stop_scheduler()
+
+
 # 创建FastAPI应用
 app = FastAPI(
-    title="Silicon Pool API", description="硅基流动 API Key 池管理工具", version="0.1.0"
+    title="Silicon Pool API",
+    description="硅基流动 API Key 池管理工具",
+    lifespan=lifespan,
 )
 
 # 初始化数据库
@@ -42,6 +52,7 @@ app.include_router(generate.router, tags=["API转发"])
 app.include_router(static.router, tags=["静态文件"])
 app.include_router(stats.router, tags=["统计数据"])
 app.include_router(auth.router, tags=["认证"])
+
 
 # 启动入口
 if __name__ == "__main__":
