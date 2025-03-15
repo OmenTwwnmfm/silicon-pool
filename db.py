@@ -34,6 +34,16 @@ def init_db():
     """)
     conn.commit()
 
+    # 创建会话表以存储用户会话
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS sessions (
+        token TEXT PRIMARY KEY,
+        expiry_time REAL,
+        created_at REAL
+    )
+    """)
+    conn.commit()
+
 
 def insert_api_key(api_key: str, balance: float):
     """向数据库中插入新的API密钥"""
@@ -56,6 +66,51 @@ def log_completion(
     """记录API调用日志"""
     cursor.execute(
         "INSERT INTO logs (used_key, model, call_time, input_tokens, output_tokens, total_tokens, endpoint) VALUES (?, ?, ?, ?, ?, ?, ?)",
-        (used_key, model, call_time, input_tokens, output_tokens, total_tokens, endpoint),
+        (
+            used_key,
+            model,
+            call_time,
+            input_tokens,
+            output_tokens,
+            total_tokens,
+            endpoint,
+        ),
     )
+    conn.commit()
+
+
+def create_session(token: str, expiry_time: float):
+    """创建新的会话记录"""
+    cursor.execute(
+        "INSERT INTO sessions (token, expiry_time, created_at) VALUES (?, ?, ?)",
+        (token, expiry_time, time.time()),
+    )
+    conn.commit()
+
+
+def get_session(token: str):
+    """获取会话信息"""
+    cursor.execute("SELECT expiry_time FROM sessions WHERE token = ?", (token,))
+    result = cursor.fetchone()
+    return result[0] if result else None
+
+
+def update_session_expiry(token: str, new_expiry_time: float):
+    """更新会话过期时间"""
+    cursor.execute(
+        "UPDATE sessions SET expiry_time = ? WHERE token = ?", (new_expiry_time, token)
+    )
+    conn.commit()
+
+
+def delete_session(token: str):
+    """删除会话"""
+    cursor.execute("DELETE FROM sessions WHERE token = ?", (token,))
+    conn.commit()
+
+
+def cleanup_expired_sessions():
+    """清理所有过期会话"""
+    current_time = time.time()
+    cursor.execute("DELETE FROM sessions WHERE expiry_time < ?", (current_time,))
     conn.commit()
