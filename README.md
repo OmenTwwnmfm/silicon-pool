@@ -17,7 +17,7 @@
 - 登录验证
 - API Key 的批量导入，自动过滤无效的 Key。余额用尽的 Key 也会接受，可用于和专门用于免费模型的 API token 配合，并发调用免费模型。Key 的导入可以正常处理带有括号余额后缀的 Key、用逗号分割的 Key 等，可无脑复制粘贴。
 - API Key 的批量导出（导出为 txt），支持按余额或字典顺序排序，支持逗号分割。
-- 对 `/chat/completions`、`/embeddings`、`/completions`（通常用于 FIM 任务，如代码自动补全）、`/images/generations` 和 `/models` 接口的转发。其中 `/chat/completions` 和 `/completions` 支持流式响应和非流式响应
+- 对 `/chat/completions`、`/embeddings`、`/completions`（通常用于 FIM 任务，如代码自动补全）、`/images/generations`、`/rerank` 和 `/models` 接口的转发。其中 `/chat/completions` 和 `/completions` 支持流式响应和非流式响应
 - 转发时有多个 Key 选择策略：随机、余额最多优先、余额最少优先、添加时间最旧优先、添加时间最新优先、使用次数最少优先、使用次数最多优先。
 - 一个简单的 Web UI 用于集中管理 Key（见上方图）
 - Key 的批量余额刷新，余额用尽的 Key 将被保留并用于免费模型的调用。
