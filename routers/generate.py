@@ -22,7 +22,7 @@ async def chat_completions(request: Request, background_tasks: BackgroundTasks):
         request_api_key = request.headers.get("Authorization", "")
         if request_api_key == f"Bearer {config.FREE_MODEL_API_KEY}":
             use_zero_balance = True
-    
+
     # 如果不使用余额为0的key，检查自定义API KEY
     if not use_zero_balance and config.CUSTOM_API_KEY and config.CUSTOM_API_KEY.strip():
         request_api_key = request.headers.get("Authorization")
@@ -160,7 +160,7 @@ async def embeddings(request: Request, background_tasks: BackgroundTasks):
         request_api_key = request.headers.get("Authorization", "")
         if request_api_key == f"Bearer {config.FREE_MODEL_API_KEY}":
             use_zero_balance = True
-    
+
     # 如果不使用余额为0的key，检查自定义API KEY
     if not use_zero_balance and config.CUSTOM_API_KEY and config.CUSTOM_API_KEY.strip():
         request_api_key = request.headers.get("Authorization")
@@ -224,7 +224,7 @@ async def completions(request: Request, background_tasks: BackgroundTasks):
         request_api_key = request.headers.get("Authorization", "")
         if request_api_key == f"Bearer {config.FREE_MODEL_API_KEY}":
             use_zero_balance = True
-    
+
     # 如果不使用余额为0的key，检查自定义API KEY
     if not use_zero_balance and config.CUSTOM_API_KEY and config.CUSTOM_API_KEY.strip():
         request_api_key = request.headers.get("Authorization")
@@ -430,6 +430,82 @@ async def options_images_generations():
             "Access-Control-Allow-Headers": "Content-Type, Authorization",
         },
     )
+
+
+@router.post("/v1/rerank")
+async def rerank(request: Request, background_tasks: BackgroundTasks):
+    # 检查是否应该使用余额为0的key
+    use_zero_balance = False
+    if config.FREE_MODEL_API_KEY and config.FREE_MODEL_API_KEY.strip():
+        request_api_key = request.headers.get("Authorization", "")
+        if request_api_key == f"Bearer {config.FREE_MODEL_API_KEY}":
+            use_zero_balance = True
+
+    # 如果不使用余额为0的key，检查自定义API KEY
+    if not use_zero_balance and config.CUSTOM_API_KEY and config.CUSTOM_API_KEY.strip():
+        request_api_key = request.headers.get("Authorization")
+        if request_api_key != f"Bearer {config.CUSTOM_API_KEY}":
+            raise HTTPException(status_code=403, detail="无效的API_KEY")
+
+    cursor.execute("SELECT key, balance FROM api_keys WHERE enabled = 1")
+    keys_with_balance = cursor.fetchall()
+    if not keys_with_balance:
+        raise HTTPException(status_code=500, detail="没有可用的api-key")
+
+    selected = select_api_key(keys_with_balance, use_zero_balance)
+    if not selected:
+        if use_zero_balance:
+            raise HTTPException(status_code=500, detail="没有余额为0的可用api-key")
+        else:
+            raise HTTPException(status_code=500, detail="没有可用的api-key")
+
+    # 增加使用计数
+    cursor.execute(
+        "UPDATE api_keys SET usage_count = usage_count + 1 WHERE key = ?", (selected,)
+    )
+    conn.commit()
+
+    # 使用选定的key转发请求到BASE_URL
+    forward_headers = dict(request.headers)
+    forward_headers["Authorization"] = f"Bearer {selected}"
+
+    try:
+        req_body = await request.body()
+    except ClientDisconnect:
+        return JSONResponse({"error": "客户端断开连接"}, status_code=499)
+
+    req_json = await request.json()
+    model = req_json.get("model", "unknown")
+    call_time_stamp = time.time()
+
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                f"{BASE_URL}/v1/rerank",
+                headers=forward_headers,
+                data=req_body,
+                timeout=300,
+            ) as resp:
+                resp_json = await resp.json()
+                meta_data = resp_json.get("meta", {})
+                tokens_usage = meta_data.get("tokens", {})
+                input_tokens = tokens_usage.get("input_tokens", 0)
+                output_tokens = tokens_usage.get("output_tokens", 0)
+                # 记录API调用
+                log_completion(
+                    selected,
+                    model,
+                    call_time_stamp,
+                    input_tokens,  # prompt_tokens
+                    output_tokens,  # completion_tokens
+                    input_tokens + output_tokens,  # total_tokens
+                    "rerank",
+                )
+                # 后台检查key余额
+                background_tasks.add_task(check_and_remove_key, selected)
+                return JSONResponse(content=resp_json, status_code=resp.status)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"请求转发失败: {str(e)}")
 
 
 @router.get("/v1/models")

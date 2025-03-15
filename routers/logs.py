@@ -8,7 +8,9 @@ router = APIRouter()
 
 
 @router.get("/logs")
-async def get_logs(page: int = 1, date_filter: str = "all", model: str = "all"):
+async def get_logs(
+    page: int = 1, date_filter: str = "all", model: str = "all", endpoint: str = "all"
+):
     page_size = 10
     offset = (page - 1) * page_size
 
@@ -28,6 +30,11 @@ async def get_logs(page: int = 1, date_filter: str = "all", model: str = "all"):
     if model != "all":
         query_conditions.append("model = ?")
         query_params.append(model)
+
+    # 接口过滤
+    if endpoint != "all":
+        query_conditions.append("endpoint = ?")
+        query_params.append(endpoint)
 
     # 组装WHERE子句
     where_clause = " AND ".join(query_conditions) if query_conditions else "1=1"
@@ -66,6 +73,12 @@ async def get_logs(page: int = 1, date_filter: str = "all", model: str = "all"):
     cursor.execute("SELECT DISTINCT model FROM logs ORDER BY model")
     available_models = [row[0] for row in cursor.fetchall()]
 
+    # 获取所有可用的接口类型，用于前端过滤下拉框
+    cursor.execute(
+        "SELECT DISTINCT endpoint FROM logs WHERE endpoint IS NOT NULL ORDER BY endpoint"
+    )
+    available_endpoints = [row[0] for row in cursor.fetchall()]
+
     return JSONResponse(
         {
             "logs": log_list,
@@ -73,6 +86,7 @@ async def get_logs(page: int = 1, date_filter: str = "all", model: str = "all"):
             "page": page,
             "page_size": page_size,
             "available_models": available_models,
+            "available_endpoints": available_endpoints,
         }
     )
 
