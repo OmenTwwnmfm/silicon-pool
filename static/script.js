@@ -190,13 +190,26 @@ function createEllipsis() {
  */
 async function copyToClipboard(text, buttonElement) {
     try {
-        await navigator.clipboard.writeText(text);
+        // 首先检查 navigator.clipboard 是否可用
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            await navigator.clipboard.writeText(text);
+        } else {
+            // 备用方法：使用临时文本区域来复制文本
+            const textarea = document.createElement('textarea');
+            textarea.value = text;
+            textarea.style.position = 'fixed'; // 防止滚动到底部
+            textarea.style.opacity = '0';
+            document.body.appendChild(textarea);
+            textarea.select();
+            document.execCommand('copy');
+            document.body.removeChild(textarea);
+        }
 
         // 更改按钮样式以显示成功
         const originalText = buttonElement.textContent;
         const originalClass = buttonElement.className;
 
-        buttonElement.textContent = '✓';
+        buttonElement.textContent = '✅';
         buttonElement.classList.add('copy-success');
 
         // 1.5秒后恢复按钮样式
@@ -205,6 +218,7 @@ async function copyToClipboard(text, buttonElement) {
             buttonElement.className = originalClass;
         }, 1500);
     } catch (err) {
+        console.error('复制失败:', err);
         showMessage('复制失败，请手动复制', 'error');
     }
 }
