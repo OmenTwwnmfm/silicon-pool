@@ -5,6 +5,7 @@
 
 <img src="https://r2.eslzzyl.eu.org/silicon-pool/login.jpeg" alt="登录页" width="50%" />
 <img src="https://r2.eslzzyl.eu.org/silicon-pool/index.jpeg" alt="主页" width="50%" />
+<img src="https://r2.eslzzyl.eu.org/silicon-pool/models.jpeg" alt="模型页" width="50%" />
 <img src="https://r2.eslzzyl.eu.org/silicon-pool/keys.jpeg" alt="Key 管理页" width="50%" />
 <img src="https://r2.eslzzyl.eu.org/silicon-pool/logs.jpeg" alt="日志页" width="50%" />
 <img src="https://r2.eslzzyl.eu.org/silicon-pool/stats.jpeg" alt="统计页" width="50%" />
