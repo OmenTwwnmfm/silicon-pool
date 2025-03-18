@@ -23,6 +23,7 @@ function initNavbar() {
     // 导航项定义
     const navItems = [
         { name: '主页', path: '/', icon: '🏠' },
+        { name: '模型', path: '/static/models.html', icon: '🔢' },
         { name: '密钥管理', path: '/static/keys.html', icon: '🔑' },
         { name: '调用日志', path: '/static/logs.html', icon: '📝' },
         { name: '统计', path: '/static/stats.html', icon: '📊' },
@@ -38,15 +39,15 @@ function initNavbar() {
                 </div>
                 <div class="navbar-links">
                     ${navItems.map(item => {
-                        const isActive = currentPath === item.path ||
-                            (item.path !== '/' && currentPath.startsWith(item.path));
-                        return `
+        const isActive = currentPath === item.path ||
+            (item.path !== '/' && currentPath.startsWith(item.path));
+        return `
                             <a href="${item.path}" class="${isActive ? 'active' : ''}">
                                 <span class="nav-icon">${item.icon}</span>
                                 <span class="nav-text">${item.name}</span>
                             </a>
                         `;
-                    }).join('')}
+    }).join('')}
                     <a href="javascript:void(0)" onclick="logout()" class="logout-link">
                         <span class="nav-icon">🚪</span>
                         <span class="nav-text">退出</span>
