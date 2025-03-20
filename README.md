@@ -38,7 +38,7 @@
 1. 安装 `uv`: https://docs.astral.sh/uv/getting-started/installation
 2. 在项目根目录执行 `uv run main.py`
     > 我也写了一份 `requirements.txt`，因此也可以使用 `pip` 来安装依赖：`pip install -r requirements.txt`
-3. 访问 http://127.0.0.1:7898 来查看 Web UI 并导入你的 Key。
+3. 访问 http://127.0.0.1:7898 来查看 Web UI 并导入你的 Key。管理面板的默认用户名和密码都是 `admin`。
 4. 在你的应用程序中设置 OpenAI `BASE_URL` 为 `http://127.0.0.1:7898/v1`，并设置 `API_KEY`：
     - 如果没有启用 API token（即留空），则 `API_KEY` 可以是任何值，留空也可以。此程序会直接转发请求，不会检查 `API_KEY`。
     - 如果启用了 API token，那么 `API_KEY` 必须是在 Web UI 中设置的 API token 值。
