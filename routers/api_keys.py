@@ -183,48 +183,57 @@ async def import_keys(request: Request):
 
 @router.post("/refresh")
 async def refresh_keys():
-    # 在获取待筛选的key时仅获取余额大于0的key
-    cursor.execute("SELECT key, balance FROM api_keys WHERE balance > 0")
-    key_balance_map = {row[0]: row[1] for row in cursor.fetchall()}
-    all_keys = list(key_balance_map.keys())
+    # 创建新的游标避免递归使用
+    local_cursor = conn.cursor()
 
-    # 获取初始总余额
-    initial_balance = sum(key_balance_map.values())
+    try:
+        # 在获取待筛选的key时仅获取余额大于0的key
+        local_cursor.execute("SELECT key, balance FROM api_keys WHERE balance > 0")
+        key_balance_map = {row[0]: row[1] for row in local_cursor.fetchall()}
+        all_keys = list(key_balance_map.keys())
 
-    # 创建并行验证任务
-    tasks = [validate_key_async(key) for key in all_keys]
-    results = await asyncio.gather(*tasks)
+        # 获取初始总余额
+        initial_balance = sum(key_balance_map.values())
 
-    removed = 0
-    updated = 0
-    zero_balance = 0
-    for key, (valid, balance) in zip(all_keys, results):
-        if valid:
-            cursor.execute(
-                "UPDATE api_keys SET balance = ? WHERE key = ?", (balance, key)
-            )
-            updated += 1
-            if float(balance) <= 0:
-                zero_balance += 1
+        # 创建并行验证任务
+        tasks = [validate_key_async(key) for key in all_keys]
+        results = await asyncio.gather(*tasks)
+
+        removed = 0
+        updated = 0
+        zero_balance = 0
+        for key, (valid, balance) in zip(all_keys, results):
+            if valid:
+                local_cursor.execute(
+                    "UPDATE api_keys SET balance = ? WHERE key = ?", (balance, key)
+                )
+                updated += 1
+                if float(balance) <= 0:
+                    zero_balance += 1
+            else:
+                local_cursor.execute("DELETE FROM api_keys WHERE key = ?", (key,))
+                removed += 1
+
+        conn.commit()
+
+        # 计算新的总余额
+        local_cursor.execute(
+            "SELECT COALESCE(SUM(balance), 0) FROM api_keys WHERE balance > 0"
+        )
+        new_balance = local_cursor.fetchone()[0]
+        balance_change = new_balance - initial_balance
+
+        message = f"刷新完成，更新 {updated} 个 Key（其中 {zero_balance} 个余额用尽），移除 {removed} 个无效的 Key"
+        if balance_change > 0:
+            message += f"，余额增加了{round(balance_change, 2)}"
         else:
-            cursor.execute("DELETE FROM api_keys WHERE key = ?", (key,))
-            removed += 1
+            balance_decrease = abs(balance_change)
+            message += f"，余额减少了{round(balance_decrease, 2)}"
 
-    conn.commit()
-
-    # 计算新的总余额
-    cursor.execute("SELECT COALESCE(SUM(balance), 0) FROM api_keys WHERE balance > 0")
-    new_balance = cursor.fetchone()[0]
-    balance_change = new_balance - initial_balance
-
-    message = f"刷新完成，更新 {updated} 个 Key（其中 {zero_balance} 个余额用尽），移除 {removed} 个无效的 Key"
-    if balance_change > 0:
-        message += f"，余额增加了{round(balance_change, 2)}"
-    else:
-        balance_decrease = abs(balance_change)
-        message += f"，余额减少了{round(balance_decrease, 2)}"
-
-    return JSONResponse({"message": message})
+        return JSONResponse({"message": message})
+    finally:
+        # 确保游标被关闭
+        local_cursor.close()
 
 
 @router.get("/export_keys")
@@ -269,22 +278,26 @@ async def export_keys(
 @router.get("/stats")
 async def stats():
     # Get count and total balance of keys with positive balance
-    cursor.execute("SELECT COUNT(*), COALESCE(SUM(balance), 0) FROM api_keys WHERE balance > 0")
+    cursor.execute(
+        "SELECT COUNT(*), COALESCE(SUM(balance), 0) FROM api_keys WHERE balance > 0"
+    )
     positive_count, total_balance = cursor.fetchone()
-    
+
     # Get count of keys with zero balance
     cursor.execute("SELECT COUNT(*) FROM api_keys WHERE balance <= 0")
     zero_balance_count = cursor.fetchone()[0]
-    
+
     # Get total key count
     total_key_count = positive_count + zero_balance_count
-    
-    return JSONResponse({
-        "total_key_count": total_key_count,
-        "positive_balance_count": positive_count,
-        "zero_balance_count": zero_balance_count,
-        "total_balance": total_balance
-    })
+
+    return JSONResponse(
+        {
+            "total_key_count": total_key_count,
+            "positive_balance_count": positive_count,
+            "zero_balance_count": zero_balance_count,
+            "total_balance": total_balance,
+        }
+    )
 
 
 # CORS预检请求处理
