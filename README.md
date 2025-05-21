@@ -33,7 +33,13 @@
 
 ## 使用 Docker 构建和运行
 
-### 方法一：使用 Docker 命令
+### 方法一：直接使用 Docker run 命令
+
+   ```bash
+   docker run -d -p 7898:7898 omentwwnmfm/silicon-pool:latest
+   ```
+
+### 方法二：使用 Docker 命令
 
 1. 构建 Docker 镜像
 
@@ -47,7 +53,7 @@
    docker run -d -p 7898:7898 silicon-pool
    ```
 
-### 方法二：使用 Docker Compose
+### 方法三：使用 Docker Compose
 
 1. 使用以下命令构建并启动服务
 
