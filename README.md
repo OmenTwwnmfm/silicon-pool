@@ -36,7 +36,10 @@
 ### 方法一：直接使用 Docker run 命令
 
    ```bash
-   docker run -d -p 7898:7898 omentwwnmfm/silicon-pool:latest
+   docker run -d \
+      -p 7898:7898 \
+      --restart unless-stopped \
+      omentwwnmfm/silicon-pool:latest
    ```
 
 ### 方法二：使用 Docker 命令
