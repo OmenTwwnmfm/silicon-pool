@@ -3,8 +3,12 @@ version: '3'
 services:
   silicon-pool:
     build: .
+    container_name: silicon-pool
     ports:
       - "7898:7898"
     volumes:
-      - ./:/app
-    restart: always
+      - ./pool.db:/app/pool.db  # 持久化数据库文件
+      - ./config.json:/app/config.json  # 持久化配置文件
+    restart: unless-stopped
+    environment:
+      - TZ=Asia/Shanghai  # 设置时区
